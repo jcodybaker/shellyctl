@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/jcodybaker/shellyctl/pkg/discovery"
 	"github.com/spf13/cobra"
 )
 
@@ -44,17 +45,17 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(
 		&mdnsZone,
 		"mdns-zone",
-		"local",
+		discovery.DefaultMDNSZone,
 		"mDNS zone to search")
 	rootCmd.PersistentFlags().StringVar(
 		&mdnsService,
 		"mdns-service",
-		"_shelly._tcp",
+		discovery.DefaultMDNSService,
 		"mDNS service to search")
 	rootCmd.PersistentFlags().DurationVar(
 		&mdnsSearchTimeout,
 		"mdns-search-timeout",
-		1*time.Second,
+		discovery.DefaultMDNSSearchTimeout,
 		"timeout for devices to respond to the mDNS discovery query.",
 	)
 }
