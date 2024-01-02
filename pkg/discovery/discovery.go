@@ -114,3 +114,14 @@ func (d *Discoverer) AddDeviceByAddress(ctx context.Context, addr string, opts .
 	d.knownDevices[dev.MACAddr] = dev
 	return dev, nil
 }
+
+// AllDevices returns all known devices.
+func (d *Discoverer) AllDevices() []*Device {
+	var out []*Device
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	for _, dev := range d.knownDevices {
+		out = append(out, dev)
+	}
+	return out
+}

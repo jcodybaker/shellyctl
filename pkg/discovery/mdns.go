@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/hashicorp/mdns"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -75,16 +76,24 @@ func sourceIsMDNS(dev *Device) {
 }
 
 func (d *Discoverer) processMDNSServiceEntry(ctx context.Context, se *mdns.ServiceEntry) *Device {
+	l := log.Ctx(ctx).With().
+		Str("component", "discovery").
+		Str("mdns_name", se.Name).
+		Str("mdns_host", se.Host).
+		Logger()
 	var addr net.IP
 	if d.preferIPVersion != "6" && !se.AddrV4.IsUnspecified() {
 		addr = se.AddrV4
 	} else if d.preferIPVersion != "4" && !se.AddrV6.IsUnspecified() {
 		addr = se.AddrV6
 	} else {
-		// TODO(cbaker) log
-		fmt.Println("unknown address format")
+		l.Warn().
+			IPAddr("addr_v4", se.AddrV4).
+			IPAddr("addr_v6", se.AddrV6).
+			Msg("mDNS advertisement with unknown or missing ")
 		return nil
 	}
+	l = l.With().IPAddr("mdns_addr", addr).Logger()
 	var genFound bool
 	for _, f := range se.InfoFields {
 		k, v, ok := strings.Cut(f, "=")
@@ -93,14 +102,12 @@ func (d *Discoverer) processMDNSServiceEntry(ctx context.Context, se *mdns.Servi
 		}
 		genFound = true
 		if v != "2" {
-			// TODO(cbaker) log
-			fmt.Printf("unsupport device `gen`: %q\n", f)
+			l.Warn().Str("gen", v).Msg("unsupport device `gen`")
 			return nil
 		}
 	}
 	if !genFound {
-		// TODO(cbaker) log
-		fmt.Println("mdns record missing `gen` field; skipping")
+		l.Warn().Msg("mdns record missing `gen` field; skipping")
 		return nil
 	}
 	u := url.URL{
@@ -110,8 +117,7 @@ func (d *Discoverer) processMDNSServiceEntry(ctx context.Context, se *mdns.Servi
 	}
 	dev, err := d.AddDeviceByAddress(ctx, u.String(), sourceIsMDNS)
 	if err != nil {
-		// TODO(cbaker) log
-		fmt.Println(err)
+		l.Err(err).Msg("adding device")
 		return nil
 	}
 	return dev
