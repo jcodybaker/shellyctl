@@ -2,6 +2,7 @@ package promserver
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -12,7 +13,12 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var ()
+const (
+	// DefaultNamespace is the default namespace for metrics.
+	DefaultNamespace = "shelly"
+	// DefaultSubsystem is the default subsystem for metrics.
+	DefaultSubsystem = "status"
+)
 
 type Option func(*Server)
 
@@ -20,6 +26,7 @@ func NewServer(ctx context.Context, discoverer *discovery.Discoverer, opts ...Op
 	s := &Server{
 		discoverer: discoverer,
 		promReg:    prometheus.NewRegistry(),
+		ctx:        ctx,
 	}
 	s.Handler = promhttp.HandlerFor(s.promReg, promhttp.HandlerOpts{})
 	s.initDescs()
@@ -198,6 +205,11 @@ func (s *Server) collectDevice(ctx context.Context, d *discovery.Device, ch chan
 		l.Err(err).Msg("querying device status")
 		return
 	}
+	deviceName := d.MACAddr
+	if config.System != nil && config.System.Device != nil && config.System.Device.Name != nil {
+		deviceName = *config.System.Device.Name
+	}
+
 	if len(config.Switches) != len(status.Switches) {
 		l.Error().
 			Int("config_len", len(config.Switches)).
@@ -211,12 +223,18 @@ func (s *Server) collectDevice(ctx context.Context, d *discovery.Device, ch chan
 		if sws.Output != nil && *sws.Output {
 			output = 1
 		}
+		componentName := fmt.Sprintf("switch:%d", i)
+		if swc.Name != nil {
+			componentName = *swc.Name
+		}
 		m, err := prometheus.NewConstMetric(
 			s.switchOutputOnDesc,
 			prometheus.GaugeValue,
 			output,
 			d.URI,
 			d.MACAddr,
+			deviceName,
+			componentName,
 			strconv.Itoa(swc.ID),
 		)
 		if err != nil {

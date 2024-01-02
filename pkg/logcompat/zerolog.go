@@ -16,7 +16,6 @@ type LogWriter struct {
 func Init(l *zerolog.Logger) {
 	// Both the mDNS and mgRPC libraries log directly to klog and go log, which is annoying.
 	mGRPCLogger := log.Logger.With().Str("component", "mgrpc").Logger()
-	logr := zerologr.New(&mGRPCLogger)
-	klog.SetLogger(logr)
+	klog.SetLogger(zerologr.New(&mGRPCLogger))
 	golog.SetOutput(&LogWriter{log: l})
 }

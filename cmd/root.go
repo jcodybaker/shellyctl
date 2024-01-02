@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -16,6 +17,7 @@ import (
 )
 
 var (
+	ctx               context.Context
 	hosts             []string
 	logLevel          string
 	mdnsDiscover      bool
@@ -31,6 +33,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
+	ctx = context.Background()
 	rootCmd.Run = func(cmd *cobra.Command, args []string) {
 		rootCmd.Help()
 	}
@@ -92,6 +95,7 @@ func init() {
 		}
 
 		logcompat.Init(&log.Logger)
+		ctx = log.Logger.WithContext(ctx)
 		return nil
 	}
 }
