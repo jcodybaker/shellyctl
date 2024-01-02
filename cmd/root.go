@@ -1,16 +1,23 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/jcodybaker/shellyctl/pkg/discovery"
+	"github.com/jcodybaker/shellyctl/pkg/logcompat"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var (
 	hosts             []string
+	logLevel          string
 	mdnsDiscover      bool
 	mdnsInterface     string
 	mdnsZone          string
@@ -21,12 +28,12 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "shellyctl",
 	Short: "shellyctl provides a cli interface for discovering and working with shelly gen 2 devices",
-	Run: func(cmd *cobra.Command, args []string) {
-		// Do Stuff Here
-	},
 }
 
 func init() {
+	rootCmd.Run = func(cmd *cobra.Command, args []string) {
+		rootCmd.Help()
+	}
 	rootCmd.PersistentFlags().StringArrayVar(
 		&hosts,
 		"host",
@@ -58,6 +65,35 @@ func init() {
 		discovery.DefaultMDNSSearchTimeout,
 		"timeout for devices to respond to the mDNS discovery query.",
 	)
+	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "warn", "threshold for outputing logs: trace, debug, info, warn, error, fatal, panic")
+
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+		viper.AutomaticEnv()
+
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+		switch strings.ToLower(logLevel) {
+		case "trace":
+			log.Logger = log.Level(zerolog.TraceLevel)
+		case "debug":
+			log.Logger = log.Level(zerolog.DebugLevel)
+		case "info":
+			log.Logger = log.Level(zerolog.InfoLevel)
+		case "warn":
+			log.Logger = log.Level(zerolog.WarnLevel)
+		case "error":
+			log.Logger = log.Level(zerolog.ErrorLevel)
+		case "fatal":
+			log.Logger = log.Level(zerolog.FatalLevel)
+		case "panic":
+			log.Logger = log.Level(zerolog.PanicLevel)
+		default:
+			return errors.New("unknown value for --log-level")
+		}
+
+		logcompat.Init(&log.Logger)
+		return nil
+	}
 }
 
 func Execute() {
