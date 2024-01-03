@@ -19,11 +19,14 @@ const (
 
 // MDNSSearch finds new devices via mDNS.
 func (d *Discoverer) MDNSSearch(ctx context.Context) ([]*Device, error) {
+	if !d.mdnsEnabled {
+		return nil, nil
+	}
 	c := make(chan *mdns.ServiceEntry, mdnsSearchBuffer)
 	params := &mdns.QueryParam{
 		Service:             d.mdnsService,
 		Domain:              d.mdnsZone,
-		Timeout:             d.mdnsSearchTimeout,
+		Timeout:             d.searchTimeout,
 		Entries:             c,
 		WantUnicastResponse: true,
 		Interface:           d.mdnsInterface,
@@ -37,7 +40,7 @@ func (d *Discoverer) MDNSSearch(ctx context.Context) ([]*Device, error) {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	workerLimiter := make(chan struct{}, d.mdnsWorkers)
+	workerLimiter := make(chan struct{}, d.concurrency)
 	defer close(workerLimiter)
 	var outputLock sync.Mutex
 	var output []*Device

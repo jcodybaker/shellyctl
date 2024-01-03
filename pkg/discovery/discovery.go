@@ -14,23 +14,25 @@ import (
 )
 
 const (
-	defaultTimeout           = 5 * time.Minute
+	// DefaultDeviceTTL sets the default time-to-live for discovered devices on long-lived commands.
+	DefaultDeviceTTL = 5 * time.Minute
+
 	DefaultMDNSZone          = "local"
 	DefaultMDNSService       = "_shelly._tcp"
 	DefaultMDNSSearchTimeout = 1 * time.Second
-	DefaultMDNSWorkers       = 5
+	DefaultConcurrency       = 5
 )
 
 func NewDiscoverer(opts ...DiscovererOption) *Discoverer {
 	d := &Discoverer{
-		timeout:           defaultTimeout,
-		now:               time.Now,
-		knownDevices:      make(map[string]*Device),
-		mdnsZone:          DefaultMDNSZone,
-		mdnsService:       DefaultMDNSService,
-		mdnsSearchTimeout: DefaultMDNSSearchTimeout,
-		mdnsWorkers:       DefaultMDNSWorkers,
-		mdnsQueryFunc:     mdns.Query,
+		deviceTTL:     DefaultDeviceTTL,
+		now:           time.Now,
+		knownDevices:  make(map[string]*Device),
+		mdnsZone:      DefaultMDNSZone,
+		mdnsService:   DefaultMDNSService,
+		searchTimeout: DefaultMDNSSearchTimeout,
+		concurrency:   DefaultConcurrency,
+		mdnsQueryFunc: mdns.Query,
 	}
 	for _, o := range opts {
 		o(d)
@@ -42,23 +44,24 @@ func NewDiscoverer(opts ...DiscovererOption) *Discoverer {
 type Discoverer struct {
 	knownDevices map[string]*Device
 
-	mdnsInterface     *net.Interface
-	mdnsZone          string
-	mdnsService       string
-	mdnsSearchTimeout time.Duration
-	mdnsWorkers       int
+	mdnsInterface *net.Interface
+	mdnsZone      string
+	mdnsService   string
+	mdnsEnabled   bool
+
+	searchTimeout time.Duration
+	concurrency   int
 
 	preferIPVersion string
 
 	mdnsQueryFunc func(*mdns.QueryParam) error
+	now           func() time.Time
 
 	lock sync.Mutex
 
-	now func() time.Time
-
-	// timeout is relevant for long-lived commands (like prometheus metrics server) when
+	// deviceTTL is relevant for long-lived commands (like prometheus metrics server) when
 	// mixed with mDNS or other ephemeral discovery.
-	timeout time.Duration
+	deviceTTL time.Duration
 }
 
 // AddDeviceByAddress attempts to parse a user-provided URI and add the device.

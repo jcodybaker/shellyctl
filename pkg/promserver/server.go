@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/jcodybaker/go-shelly"
 	"github.com/jcodybaker/shellyctl/pkg/discovery"
@@ -13,20 +15,16 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-const (
-	// DefaultNamespace is the default namespace for metrics.
-	DefaultNamespace = "shelly"
-	// DefaultSubsystem is the default subsystem for metrics.
-	DefaultSubsystem = "status"
-)
-
-type Option func(*Server)
-
 func NewServer(ctx context.Context, discoverer *discovery.Discoverer, opts ...Option) http.Handler {
 	s := &Server{
-		discoverer: discoverer,
-		promReg:    prometheus.NewRegistry(),
-		ctx:        ctx,
+		discoverer:    discoverer,
+		promReg:       prometheus.NewRegistry(),
+		ctx:           ctx,
+		concurrency:   DefaultConcurrency,
+		deviceTimeout: DefaultDeviceTimeout,
+	}
+	for _, o := range opts {
+		o(s)
 	}
 	s.Handler = promhttp.HandlerFor(s.promReg, promhttp.HandlerOpts{})
 	s.initDescs()
@@ -39,8 +37,10 @@ type Server struct {
 	discoverer *discovery.Discoverer
 	promReg    *prometheus.Registry
 	http.Handler
-	namespace string
-	subsystem string
+	namespace     string
+	subsystem     string
+	concurrency   int
+	deviceTimeout time.Duration
 
 	switchOutputOnDesc                *prometheus.Desc
 	inputStateOnDesc                  *prometheus.Desc
@@ -175,9 +175,27 @@ func (s *Server) Collect(ch chan<- prometheus.Metric) {
 	if _, err := s.discoverer.MDNSSearch(s.ctx); err != nil {
 		l.Err(err).Msg("finding new mdns devices")
 	}
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	concurrencyLimit := make(chan struct{}, s.concurrency)
+	defer close(concurrencyLimit)
 	for _, d := range s.discoverer.AllDevices() {
-		// TODO(cbaker) timeout
-		s.collectDevice(s.ctx, d, ch)
+		d := d
+		select {
+		case <-s.ctx.Done():
+			return
+		case concurrencyLimit <- struct{}{}:
+		}
+		wg.Add(1)
+		go func() {
+			ctx, cancel := context.WithTimeout(s.ctx, s.deviceTimeout)
+			defer func() {
+				cancel()
+				<-concurrencyLimit
+				wg.Done()
+			}()
+			s.collectDevice(ctx, d, ch)
+		}()
 	}
 }
 
