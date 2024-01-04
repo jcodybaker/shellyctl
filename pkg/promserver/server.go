@@ -3,6 +3,7 @@ package promserver
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"sync"
@@ -20,6 +21,38 @@ var (
 	baseKnownSwitchErrors = []string{"overtemp", "overpower", "overvoltage", "undervoltage"}
 	// baseKnownInputErrors describes documented error conditions which may be reported on input components.
 	baseKnownInputErrors = []string{"out_of_range", "read"}
+	// baseKnownCoverErrors describes documented error conditions which may be reported on cover components.
+	baseKnownCoverErrors = []string{
+		"safety_switch",
+		"overpower",
+		"overvoltage",
+		"undervoltage",
+		"overcurrent",
+		"obstruction",
+		"overtemp",
+		"bad_feedback:rotating_in_wrong_direction",
+		"bad_feedback:both_directions_active",
+		"bad_feedback:failed_to_halt",
+		"cal_abort:timeout_open",
+		"cal_abort:timeout_close",
+		"cal_abort:safety",
+		"cal_abort:ext_command",
+		"cal_abort:bad_feedback",
+		"cal_abort:implausible_time_to_fully_close",
+		"cal_abort:implausible_time_to_fully_open",
+		"cal_abort:implausible_power_consumption_in_close_dir",
+		"cal_abort:implausible_power_consumption_in_open_dir",
+		"cal_abort:too_many_steps_to_close",
+		"cal_abort:too_few_steps_to_close",
+		"cal_abort:implausible_time_to_fully_close_w_steps",
+		"cal_abort:implausible_step_duration_in_open_dir",
+		"cal_abort:too_many_steps_to_open",
+		"cal_abort:too_few_steps_to_open",
+		"cal_abort:implausible_time_to_fully_open_w_steps",
+	}
+
+	// coverStates describe the documented cover component state.
+	coverStates = []string{"open", "closed", "opening", "closing", "stopped", "calibrating"}
 )
 
 func NewServer(ctx context.Context, discoverer *discovery.Discoverer, opts ...Option) http.Handler {
@@ -42,6 +75,9 @@ func NewServer(ctx context.Context, discoverer *discovery.Discoverer, opts ...Op
 	for _, e := range baseKnownInputErrors {
 		s.knownInputErrors.Store(e, struct{}{})
 	}
+	for _, e := range baseKnownCoverErrors {
+		s.knownCoverErrors.Store(e, struct{}{})
+	}
 	return s
 }
 
@@ -56,6 +92,9 @@ type Server struct {
 	deviceTimeout time.Duration
 
 	switchOutputOnDesc                *prometheus.Desc
+	coverPositionDesc                 *prometheus.Desc
+	coverStateDesc                    *prometheus.Desc
+	coverPositionControlEnabled       *prometheus.Desc
 	inputEnabledDesc                  *prometheus.Desc
 	inputStateOnDesc                  *prometheus.Desc
 	inputPercentDesc                  *prometheus.Desc
@@ -76,6 +115,7 @@ type Server struct {
 	// error codes seen. If an unknown code is seen we want to retain it so we can report it as cleared.
 	knownSwitchErrors sync.Map
 	knownInputErrors  sync.Map
+	knownCoverErrors  sync.Map
 }
 
 func (s *Server) initDescs() {
@@ -83,6 +123,24 @@ func (s *Server) initDescs() {
 		prometheus.BuildFQName(s.namespace, s.subsystem, "switch_output_on"),
 		`1 if the switch output is on; 0 if it is off.`,
 		[]string{"instance", "mac", "device_name", "component_name", "id"},
+		nil,
+	)
+	s.coverPositionDesc = prometheus.NewDesc(
+		prometheus.BuildFQName(s.namespace, s.subsystem, "cover_position_percent"),
+		`Only present if Cover is calibrated. Represents current position in percent from 0 (fully closed) to 100 (fully open); null if the position is unknown`,
+		[]string{"instance", "mac", "device_name", "component_name", "id"},
+		nil,
+	)
+	s.coverStateDesc = prometheus.NewDesc(
+		prometheus.BuildFQName(s.namespace, s.subsystem, "cover_state"),
+		`Only present if Cover is calibrated. Represents current position in percent from 0 (fully closed) to 100 (fully open); null if the position is unknown`,
+		[]string{"instance", "mac", "device_name", "component_name", "id", "state"},
+		nil,
+	)
+	s.coverPositionControlEnabled = prometheus.NewDesc(
+		prometheus.BuildFQName(s.namespace, s.subsystem, "cover_position_enabled"),
+		`1 if position control is enabled; 0 otherwise.`,
+		[]string{"instance", "mac", "device_name", "component_name", "id", "state"},
 		nil,
 	)
 	s.inputEnabledDesc = prometheus.NewDesc(
@@ -489,6 +547,262 @@ func (s *Server) collectDevice(ctx context.Context, d *discovery.Device, ch chan
 			return true
 		})
 	}
+	for i, cc := range config.Covers {
+		cs := status.Covers[i]
+
+		componentType := "cover"
+		componentName := fmt.Sprintf("%s:%d", componentType, i)
+		if cc.Name != nil {
+			componentName = *cc.Name
+		}
+
+		// cover_position
+		var currentPos float64 = math.NaN()
+		if cs.CurrentPos != nil {
+			currentPos = *cs.CurrentPos
+		}
+		m, err := prometheus.NewConstMetric(
+			s.coverPositionDesc,
+			prometheus.GaugeValue,
+			currentPos,
+			d.URI,
+			d.MACAddr,
+			deviceName,
+			componentName,
+			strconv.Itoa(cc.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+
+		// cover_position_control_enabled
+		m, err = prometheus.NewConstMetric(
+			s.coverPositionControlEnabled,
+			prometheus.GaugeValue,
+			ptrBoolToFloat64(cs.PosControl),
+			d.URI,
+			d.MACAddr,
+			deviceName,
+			componentName,
+			strconv.Itoa(cc.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+
+		// cover_state
+		for _, state := range coverStates {
+			var stateActive float64
+			if cs.State != nil && *cs.State == state {
+				stateActive = 1
+			}
+			m, err := prometheus.NewConstMetric(
+				s.coverStateDesc,
+				prometheus.GaugeValue,
+				stateActive,
+				d.URI,
+				d.MACAddr,
+				deviceName,
+				componentName,
+				strconv.Itoa(cc.ID),
+				state,
+			)
+			if err != nil {
+				l.Err(err).Msg("encoding metric")
+			}
+			ch <- m
+		}
+
+		if cs.AEnergy != nil {
+			// total_energy_watt_hours
+			m, err := prometheus.NewConstMetric(
+				s.totalEnergyWattHoursDesc,
+				prometheus.GaugeValue,
+				cs.AEnergy.Total,
+				d.URI,
+				d.MACAddr,
+				deviceName,
+				componentName,
+				componentType,
+				strconv.Itoa(cc.ID),
+			)
+			if err != nil {
+				l.Err(err).Msg("encoding metric")
+			}
+			ch <- m
+		}
+		if cs.Temperature != nil && cs.Temperature.C != nil {
+			// temperature_celsius
+			m, err := prometheus.NewConstMetric(
+				s.temperatureCelsiusDesc,
+				prometheus.GaugeValue,
+				*cs.Temperature.C,
+				d.URI,
+				d.MACAddr,
+				deviceName,
+				componentName,
+				componentType,
+				strconv.Itoa(cc.ID),
+			)
+			if err != nil {
+				l.Err(err).Msg("encoding metric")
+			}
+			ch <- m
+		}
+		if cs.Temperature != nil && cs.Temperature.F != nil {
+			// temperature_fahrenheit
+			m, err := prometheus.NewConstMetric(
+				s.temperatureFahrenheitDesc,
+				prometheus.GaugeValue,
+				*cs.Temperature.F,
+				d.URI,
+				d.MACAddr,
+				deviceName,
+				componentName,
+				componentType,
+				strconv.Itoa(cc.ID),
+			)
+			if err != nil {
+				l.Err(err).Msg("encoding metric")
+			}
+			ch <- m
+		}
+		if cs.Freq != nil {
+			// network_frequency_hertz
+			m, err := prometheus.NewConstMetric(
+				s.networkFrequencyHertzDesc,
+				prometheus.GaugeValue,
+				*cs.Freq,
+				d.URI,
+				d.MACAddr,
+				deviceName,
+				componentName,
+				componentType,
+				strconv.Itoa(cc.ID),
+			)
+			if err != nil {
+				l.Err(err).Msg("encoding metric")
+			}
+			ch <- m
+		}
+		if cs.PF != nil {
+			// power_factor
+			m, err := prometheus.NewConstMetric(
+				s.powerFactorDesc,
+				prometheus.GaugeValue,
+				*cs.PF,
+				d.URI,
+				d.MACAddr,
+				deviceName,
+				componentName,
+				componentType,
+				strconv.Itoa(cc.ID),
+			)
+			if err != nil {
+				l.Err(err).Msg("encoding metric")
+			}
+			ch <- m
+		}
+		if cs.Voltage != nil {
+			// voltage
+			m, err := prometheus.NewConstMetric(
+				s.voltageDesc,
+				prometheus.GaugeValue,
+				*cs.Voltage,
+				d.URI,
+				d.MACAddr,
+				deviceName,
+				componentName,
+				componentType,
+				strconv.Itoa(cc.ID),
+			)
+			if err != nil {
+				l.Err(err).Msg("encoding metric")
+			}
+			ch <- m
+		}
+		if cs.Current != nil {
+			// current_amperes
+			m, err := prometheus.NewConstMetric(
+				s.currentAmperesDesc,
+				prometheus.GaugeValue,
+				*cs.Current,
+				d.URI,
+				d.MACAddr,
+				deviceName,
+				componentName,
+				componentType,
+				strconv.Itoa(cc.ID),
+			)
+			if err != nil {
+				l.Err(err).Msg("encoding metric")
+			}
+			ch <- m
+		}
+		if cs.APower != nil {
+			// instantaneous_active_power_watts
+			m, err := prometheus.NewConstMetric(
+				s.instantaneousActivePowerWattsDesc,
+				prometheus.GaugeValue,
+				*cs.APower,
+				d.URI,
+				d.MACAddr,
+				deviceName,
+				componentName,
+				componentType,
+				strconv.Itoa(cc.ID),
+			)
+			if err != nil {
+				l.Err(err).Msg("encoding metric")
+			}
+			ch <- m
+		}
+
+		// component_error
+		// We obviously want to emit metrics with a 1.0 value for any error that is seen. BUT we
+		// want to ensure we send 0.0 for all errors which are inactive to clear any alerts.
+		var seenErrors map[string]struct{}
+		for _, e := range cs.Errors {
+			if seenErrors == nil {
+				// This should be rare so only init if we need it.
+				seenErrors = make(map[string]struct{})
+			}
+			seenErrors[e] = struct{}{}
+			if _, newError := s.knownCoverErrors.LoadOrStore(e, struct{}{}); newError {
+				// This metric isn't documented. We want to
+				l.Warn().
+					Str("error_code", e).
+					Msg("unknown error code was reported by cover; metric will be retained for future reporting")
+			}
+		}
+		s.knownCoverErrors.Range(func(eAny, _ any) bool {
+			e := eAny.(string)
+			var eValue float64
+			if _, ok := seenErrors[e]; ok {
+				eValue = 1
+			}
+			m, err := prometheus.NewConstMetric(
+				s.componentErrorDesc,
+				prometheus.GaugeValue,
+				eValue,
+				d.URI,
+				d.MACAddr,
+				deviceName,
+				componentName,
+				componentType,
+				strconv.Itoa(cc.ID),
+				e,
+			)
+			if err != nil {
+				l.Err(err).Msg("encoding metric")
+			}
+			ch <- m
+			return true
+		})
+	}
+
 	for i, ic := range config.Inputs {
 		is := status.Inputs[i]
 
