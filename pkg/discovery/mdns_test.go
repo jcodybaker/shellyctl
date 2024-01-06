@@ -28,8 +28,8 @@ func TestDiscovererMDNSSearch(t *testing.T) {
 			resp := frame.NewResponseFromFrame(reqFrame)
 			resp.Response = json.RawMessage(`{
 				"name": null,
-				"id": "shellypro3-c8f09e883630",
-				"mac": "C8F09E883630",
+				"id": "shellypro3-000000000001",
+				"mac": "000000000001",
 				"slot": 0,
 				"model": "SPSW-003XE16EU",
 				"gen": 2,

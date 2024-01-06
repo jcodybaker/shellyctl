@@ -62,6 +62,8 @@ func NewServer(ctx context.Context, discoverer *discovery.Discoverer, opts ...Op
 		ctx:           ctx,
 		concurrency:   DefaultConcurrency,
 		deviceTimeout: DefaultDeviceTimeout,
+		namespace:     DefaultNamespace,
+		subsystem:     DefaultSubsystem,
 	}
 	for _, o := range opts {
 		o(s)
@@ -319,6 +321,7 @@ func (s *Server) collectDevice(ctx context.Context, d *discovery.Device, ch chan
 	}
 	for i, swc := range config.Switches {
 		sws := status.Switches[i]
+		swc := swc
 
 		componentType := "switch"
 		componentName := fmt.Sprintf("%s:%d", componentType, i)
@@ -346,7 +349,7 @@ func (s *Server) collectDevice(ctx context.Context, d *discovery.Device, ch chan
 			// total_energy_watt_hours
 			m, err := prometheus.NewConstMetric(
 				s.totalEnergyWattHoursDesc,
-				prometheus.GaugeValue,
+				prometheus.CounterValue,
 				sws.AEnergy.Total,
 				d.URI,
 				d.MACAddr,
@@ -364,7 +367,7 @@ func (s *Server) collectDevice(ctx context.Context, d *discovery.Device, ch chan
 			// total_returned_energy_watt_hours
 			m, err := prometheus.NewConstMetric(
 				s.totalReturnedEnergyWattHoursDesc,
-				prometheus.GaugeValue,
+				prometheus.CounterValue,
 				sws.RetAEnergy.Total,
 				d.URI,
 				d.MACAddr,
@@ -619,7 +622,7 @@ func (s *Server) collectDevice(ctx context.Context, d *discovery.Device, ch chan
 			// total_energy_watt_hours
 			m, err := prometheus.NewConstMetric(
 				s.totalEnergyWattHoursDesc,
-				prometheus.GaugeValue,
+				prometheus.CounterValue,
 				cs.AEnergy.Total,
 				d.URI,
 				d.MACAddr,
