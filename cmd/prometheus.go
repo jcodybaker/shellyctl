@@ -37,7 +37,7 @@ func init() {
 }
 
 var prometheusCmd = &cobra.Command{
-	Use:     "prometehus",
+	Use:     "prometheus",
 	Aliases: []string{"prom"},
 	Short:   "host a prometheus metrics exporter for shelly devices",
 	Run: func(cmd *cobra.Command, args []string) {
