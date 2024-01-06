@@ -66,6 +66,7 @@ Global Flags:
 * Device Provisioning
 * Device Backup & Restore / Support for configuration as code style provisioning.
 * CLI Support for all configuration
+* MQTT / WebSocket support
 
 
 ## Contributing
