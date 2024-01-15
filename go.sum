@@ -535,6 +535,8 @@ github.com/jcodybaker/go-shelly v0.0.0-20240106224054-4dd69bb0bdba h1:XSpFbWQqaq
 github.com/jcodybaker/go-shelly v0.0.0-20240106224054-4dd69bb0bdba/go.mod h1:EfKnkqHSomR+wV7AoVgv6wU+kz1Xm4RSaEKaWMKWgWg=
 github.com/jcodybaker/go-shelly v0.0.0-20240110020819-e8238b33a846 h1:Ibn3e4tpnWg5qN46fUysRUIDS6g8TCbHX0i2YUQXRII=
 github.com/jcodybaker/go-shelly v0.0.0-20240110020819-e8238b33a846/go.mod h1:EfKnkqHSomR+wV7AoVgv6wU+kz1Xm4RSaEKaWMKWgWg=
+github.com/jcodybaker/go-shelly v0.0.0-20240115221010-dd34db830ac1 h1:OP0EZ4TtPfgxHa8gSMICWY52W7SyfLOJZ8ONrjex6rE=
+github.com/jcodybaker/go-shelly v0.0.0-20240115221010-dd34db830ac1/go.mod h1:EfKnkqHSomR+wV7AoVgv6wU+kz1Xm4RSaEKaWMKWgWg=
 github.com/jessevdk/go-flags v1.5.0/go.mod h1:Fw0T6WPc1dYxT4mKEZRfG5kJhaTDP9pj1c2EWnYs/m4=
 github.com/jmespath/go-jmespath v0.0.0-20160202185014-0b12d6b521d8/go.mod h1:Nht3zPeWKUH0NzdCt2Blrr5ys8VGpn0CEB0cQHVjt7k=
 github.com/jmespath/go-jmespath v0.0.0-20160803190731-bd40a432e4c7/go.mod h1:Nht3zPeWKUH0NzdCt2Blrr5ys8VGpn0CEB0cQHVjt7k=

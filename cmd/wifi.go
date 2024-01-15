@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var wifiRequests = []shelly.RPCRequestBody{
+var WifiRequests = []shelly.RPCRequestBody{
 	&shelly.WifiGetStatusRequest{},
 	&shelly.WifiGetConfigRequest{},
 	&shelly.WifiSetConfigRequest{},
@@ -21,7 +21,7 @@ func init() {
 		wifiCmd.Help()
 	}
 	discoveryFlags(wifiCmd.PersistentFlags(), false)
-	for _, req := range wifiRequests {
+	for _, req := range WifiRequests {
 		c, err := gencobra.RequestToCmd(req)
 		if err != nil {
 			panic("building wifi subcommands: " + err.Error())

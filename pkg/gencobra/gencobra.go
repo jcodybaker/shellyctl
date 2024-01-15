@@ -1,8 +1,10 @@
 package gencobra
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 
@@ -15,16 +17,20 @@ import (
 func RequestToCmd(req shelly.RPCRequestBody) (*cobra.Command, error) {
 	c := &cobra.Command{}
 	c.RunE = func(cmd *cobra.Command, args []string) error {
-		if err := forEachStructField(req, "", newFlagReader(c.Flags(), req.Method())); err != nil {
+		if _, err := forEachStructField(reflect.ValueOf(req), "", newFlagReader(c.Flags(), req.Method())); err != nil {
+			return err
+		}
+		if err := json.NewEncoder(os.Stdout).Encode(req); err != nil {
 			return err
 		}
 		return nil
+
 	}
 	var err error
 	if c.Use, err = transformMethodName(req.Method()); err != nil {
 		return nil, err
 	}
-	if err := forEachStructField(req, "", newFlagFactory(c.Flags(), req.Method())); err != nil {
+	if _, err := forEachStructField(reflect.ValueOf(req), "", newFlagFactory(c.Flags(), req.Method())); err != nil {
 		return c, err
 	}
 
@@ -39,66 +45,33 @@ func transformMethodName(n string) (string, error) {
 	return strcase.KebabCase(subCommand), nil
 }
 
-// func requestToFlags(req shelly.RPCRequestBody, f *pflag.FlagSet) error {
-// 	v := reflect.ValueOf(req)
-// 	if k := v.Kind(); k != reflect.Pointer {
-// 		return fmt.Errorf("req shelly.RPCRequestBody interface had invalid type / value: %T", req)
-// 	}
-// 	v = v.Elem()
-// 	if k := v.Kind(); k != reflect.Struct {
-// 		return fmt.Errorf("req *shelly.RPCRequestBody interface had invalid type / value: %T", req)
-// 	}
-// 	t := v.Type()
-// 	for i := 0; i < t.NumField(); i++ {
-// 		ft := t.Field(i)
-// 		if !ft.IsExported() {
-// 			continue
-// 		}
-// 		jTag, ok := ft.Tag.Lookup("json")
-// 		if !ok {
-// 			continue
-// 		}
-// 		name, _, _ := strings.Cut(jTag, ",")
-// 		if err := typeToFlag(f, ft.Type, name, "", req.Method()); err != nil {
-// 			return err
-// 		}
-// 	}
-// 	return nil
-// }
+type something func(fieldType reflect.Type, fieldValue reflect.Value, name, prefix string) (bool, error)
 
-type something func(fieldType reflect.Type, name, prefix string) error
+func forEachStructField(v reflect.Value, prefix string, f something) (bool, error) {
+	var mutatedStruct bool
 
-func forEachStructField(s interface{}, prefix string, f something) error {
-	v := reflect.ValueOf(s)
 	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 	if k := v.Kind(); k != reflect.Struct {
-		return fmt.Errorf("req *shelly.RPCRequestBody interface had invalid type / value: %T", s)
+		return false, fmt.Errorf("expected struct, got: %T", v.Type)
 	}
 	t := v.Type()
 	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		if !field.IsExported() {
+		fieldDef := t.Field(i)
+		if !fieldDef.IsExported() {
 			continue
 		}
-		jTag, ok := field.Tag.Lookup("json")
+		jTag, ok := fieldDef.Tag.Lookup("json")
 		if !ok {
 			continue
 		}
 		name, _, _ := strings.Cut(jTag, ",")
-		fieldType := field.Type
+		fieldType := fieldDef.Type
 		fv := v.Field(i)
-		if fieldType.Kind() == reflect.Pointer {
-			fieldType = fieldType.Elem()
-			if fv.IsNil() {
-				fv = reflect.New(fieldType)
-			} else {
-				fv = fv.Elem()
-			}
-		}
 
-		if fieldType.Kind() == reflect.Struct {
+		if fieldType.Kind() == reflect.Struct ||
+			(fieldType.Kind() == reflect.Pointer && (fieldType.Elem().Kind() == reflect.Struct)) {
 			var newPrefix string
 			if prefix != "" || name != "config" {
 				if prefix != "" {
@@ -106,45 +79,114 @@ func forEachStructField(s interface{}, prefix string, f something) error {
 				}
 				newPrefix = newPrefix + strcase.KebabCase(name)
 			}
-			if err := forEachStructField(fv.Interface(), newPrefix, f); err != nil {
-				return err
+			didSet := false
+			if fieldType.Kind() == reflect.Pointer {
+				fieldType = fieldType.Elem()
+				if fv.IsNil() {
+					fv = reflect.New(fieldType)
+					didSet = true
+				} else {
+					fv = fv.Elem()
+				}
+			}
+			shouldSetValue, err := forEachStructField(fv, newPrefix, f)
+			if err != nil {
+				return false, err
+			}
+			if shouldSetValue && didSet && fieldDef.Type.Kind() == reflect.Pointer {
+				// the fv was mutated and we created it, we need to set it on the value.
+				v.Field(i).Set(fv)
 			}
 		} else {
-			if err := f(fieldType, name, prefix); err != nil {
-				return err
+			fieldMutated, err := f(fieldType, fv, name, prefix)
+			if err != nil {
+				return false, err
+			}
+			if fieldMutated {
+				mutatedStruct = true
 			}
 		}
 	}
-	return nil
+	return mutatedStruct, nil
 }
 
 func newFlagReader(f *pflag.FlagSet, method string) something {
-	ff := func(typ reflect.Type, name, prefix string) error {
+	ff := func(typ reflect.Type, fieldValue reflect.Value, name, prefix string) (bool, error) {
 		flagName := strcase.KebabCase(name)
 		if prefix != "" {
 			flagName = fmt.Sprintf("%s-%s", prefix, flagName)
 		}
 		fv := f.Lookup(flagName)
-		fmt.Printf("--%s=%v set=%v\n", flagName, fv.Changed, fv.Value)
-		return nil
+		if fv.Changed {
+			var v interface{}
+			var err error
+			switch fv.Value.Type() {
+			case "string":
+				v, err = f.GetString(flagName)
+			case "bool":
+				v, err = f.GetBool(flagName)
+			case "int":
+				v, err = f.GetInt(flagName)
+			case "int8":
+				v, err = f.GetInt8(flagName)
+			case "int16":
+				v, err = f.GetInt16(flagName)
+			case "int32":
+				v, err = f.GetInt32(flagName)
+			case "int64":
+				v, err = f.GetInt64(flagName)
+			case "uint":
+				v, err = f.GetUint(flagName)
+			case "uint8":
+				v, err = f.GetUint8(flagName)
+			case "uint16":
+				v, err = f.GetUint16(flagName)
+			case "uint32":
+				v, err = f.GetUint32(flagName)
+			case "uint64":
+				v, err = f.GetUint64(flagName)
+			default:
+				return false, fmt.Errorf("unknown type: %v", typ.Kind())
+			}
+			if err != nil {
+				return false, err
+			}
+			if fieldValue.Kind() == reflect.Pointer {
+				if fieldValue.IsNil() {
+					newValue := reflect.ValueOf(shelly.BoolPtr(true))
+					fieldValue.Set(newValue)
+				} else {
+					fieldValue.Set(reflect.ValueOf(v))
+				}
+			}
+		}
+		return fv.Changed, nil
 	}
 	return ff
 }
 
 func newFlagFactory(f *pflag.FlagSet, method string) something {
 	var ff something
-	ff = func(typ reflect.Type, name, prefix string) error {
+	ff = func(typ reflect.Type, fieldValue reflect.Value, name, prefix string) (bool, error) {
+		if typ.Kind() == reflect.Pointer {
+			typ = typ.Elem()
+			if fieldValue.IsNil() {
+				fieldValue = reflect.New(typ)
+			} else {
+				fieldValue = fieldValue.Elem()
+			}
+		}
 		flagName := strcase.KebabCase(name)
 		if prefix != "" {
 			flagName = fmt.Sprintf("%s-%s", prefix, flagName)
 		}
 		desc := fmt.Sprintf("Set the %q field on the %q request", name, method)
 		if gotFlag := f.Lookup(flagName); gotFlag != nil {
-			return nil
+			return false, nil
 		}
 		switch typ.Kind() {
 		case reflect.Pointer:
-			return ff(typ.Elem(), name, prefix)
+			return ff(typ.Elem(), fieldValue.Elem(), name, prefix)
 		case reflect.String:
 			f.String(flagName, "", desc)
 		case reflect.Bool:
@@ -179,9 +221,9 @@ func newFlagFactory(f *pflag.FlagSet, method string) something {
 		case reflect.Float64:
 			f.Float64(flagName, 0, desc)
 		default:
-			return fmt.Errorf("unknown type: %v", typ.Kind())
+			return false, fmt.Errorf("unknown type: %v", typ.Kind())
 		}
-		return nil
+		return false, nil
 	}
 	return ff
 }
