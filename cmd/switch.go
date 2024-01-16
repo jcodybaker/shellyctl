@@ -24,7 +24,7 @@ func init() {
 	}
 	discoveryFlags(shellyCmd.PersistentFlags(), false)
 	for _, req := range shellyRequests {
-		c, err := gencobra.RequestToCmd(req)
+		c, err := gencobra.RequestToCmd(ctx, req, Output)
 		if err != nil {
 			panic("building shelly subcommands: " + err.Error())
 		}

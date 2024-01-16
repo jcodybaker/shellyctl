@@ -22,7 +22,7 @@ func init() {
 	}
 	discoveryFlags(wifiCmd.PersistentFlags(), false)
 	for _, req := range WifiRequests {
-		c, err := gencobra.RequestToCmd(req)
+		c, err := gencobra.RequestToCmd(ctx, req, Output)
 		if err != nil {
 			panic("building wifi subcommands: " + err.Error())
 		}

@@ -1,30 +1,32 @@
 package gencobra
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
+	"math"
 	"reflect"
 	"strings"
 
 	"github.com/jcodybaker/go-shelly"
+	"github.com/jcodybaker/shellyctl/pkg/outputter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/stoewer/go-strcase"
 )
 
-func RequestToCmd(req shelly.RPCRequestBody) (*cobra.Command, error) {
+func RequestToCmd(ctx context.Context, req shelly.RPCRequestBody, out outputter.Outputter) (*cobra.Command, error) {
 	c := &cobra.Command{}
 	c.RunE = func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
 		if _, err := forEachStructField(reflect.ValueOf(req), "", newFlagReader(c.Flags(), req.Method())); err != nil {
 			return err
 		}
-		if err := json.NewEncoder(os.Stdout).Encode(req); err != nil {
+		if err := out(ctx, fmt.Sprintf("Sending %q request", req.Method()), "request", req); err != nil {
 			return err
 		}
 		return nil
-
 	}
 	var err error
 	if c.Use, err = transformMethodName(req.Method()); err != nil {
@@ -95,6 +97,7 @@ func forEachStructField(v reflect.Value, prefix string, f something) (bool, erro
 			}
 			if shouldSetValue && didSet && fieldDef.Type.Kind() == reflect.Pointer {
 				// the fv was mutated and we created it, we need to set it on the value.
+				mutatedStruct = true
 				v.Field(i).Set(fv)
 			}
 		} else {
@@ -118,46 +121,130 @@ func newFlagReader(f *pflag.FlagSet, method string) something {
 		}
 		fv := f.Lookup(flagName)
 		if fv.Changed {
-			var v interface{}
 			var err error
-			switch fv.Value.Type() {
-			case "string":
-				v, err = f.GetString(flagName)
-			case "bool":
-				v, err = f.GetBool(flagName)
-			case "int":
-				v, err = f.GetInt(flagName)
-			case "int8":
-				v, err = f.GetInt8(flagName)
-			case "int16":
-				v, err = f.GetInt16(flagName)
-			case "int32":
-				v, err = f.GetInt32(flagName)
-			case "int64":
-				v, err = f.GetInt64(flagName)
-			case "uint":
-				v, err = f.GetUint(flagName)
-			case "uint8":
-				v, err = f.GetUint8(flagName)
-			case "uint16":
-				v, err = f.GetUint16(flagName)
-			case "uint32":
-				v, err = f.GetUint32(flagName)
-			case "uint64":
-				v, err = f.GetUint64(flagName)
+			switch fieldValue.Type() {
+			case reflect.TypeOf(true):
+				var b bool
+				b, err = f.GetBool(flagName)
+				fieldValue.SetBool(b)
+			case reflect.TypeOf((*bool)(nil)):
+				var b bool
+				b, err = f.GetBool(flagName)
+				fieldValue.Set(reflect.ValueOf(&b))
+			case reflect.TypeOf(int(0)):
+				var i int
+				i, err = f.GetInt(flagName)
+				fieldValue.SetInt(int64(i))
+			case reflect.TypeOf((*int)(nil)):
+				var i int
+				i, err = f.GetInt(flagName)
+				fieldValue.Set(reflect.ValueOf(&i))
+			case reflect.TypeOf(int8(0)):
+				var i int8
+				i, err = f.GetInt8(flagName)
+				fieldValue.SetInt(int64(i))
+			case reflect.TypeOf((*int8)(nil)):
+				var i int8
+				i, err = f.GetInt8(flagName)
+				fieldValue.Set(reflect.ValueOf(&i))
+			case reflect.TypeOf(int16(0)):
+				var i int16
+				i, err = f.GetInt16(flagName)
+				fieldValue.SetInt(int64(i))
+			case reflect.TypeOf((*int16)(nil)):
+				var i int16
+				i, err = f.GetInt16(flagName)
+				fieldValue.Set(reflect.ValueOf(&i))
+			case reflect.TypeOf(int32(0)):
+				var i int32
+				i, err = f.GetInt32(flagName)
+				fieldValue.SetInt(int64(i))
+			case reflect.TypeOf((*int32)(nil)):
+				var i int32
+				i, err = f.GetInt32(flagName)
+				fieldValue.Set(reflect.ValueOf(&i))
+			case reflect.TypeOf(int64(0)):
+				var i int64
+				i, err = f.GetInt64(flagName)
+				fieldValue.SetInt(i)
+			case reflect.TypeOf((*int64)(nil)):
+				var i int64
+				i, err = f.GetInt64(flagName)
+				fieldValue.Set(reflect.ValueOf(&i))
+			case reflect.TypeOf(uint(0)):
+				var i uint
+				i, err = f.GetUint(flagName)
+				fieldValue.SetUint(uint64(i))
+			case reflect.TypeOf((*uint)(nil)):
+				var i uint
+				i, err = f.GetUint(flagName)
+				fieldValue.Set(reflect.ValueOf(&i))
+			case reflect.TypeOf(uint8(0)):
+				var i uint8
+				i, err = f.GetUint8(flagName)
+				fieldValue.SetUint(uint64(i))
+			case reflect.TypeOf((*uint8)(nil)):
+				var i uint8
+				i, err = f.GetUint8(flagName)
+				fieldValue.Set(reflect.ValueOf(&i))
+			case reflect.TypeOf(uint16(0)):
+				var i uint16
+				i, err = f.GetUint16(flagName)
+				fieldValue.SetUint(uint64(i))
+			case reflect.TypeOf((*uint16)(nil)):
+				var i uint16
+				i, err = f.GetUint16(flagName)
+				fieldValue.Set(reflect.ValueOf(&i))
+			case reflect.TypeOf(uint32(0)):
+				var i uint32
+				i, err = f.GetUint32(flagName)
+				fieldValue.SetUint(uint64(i))
+			case reflect.TypeOf((*uint32)(nil)):
+				var i uint32
+				i, err = f.GetUint32(flagName)
+				fieldValue.Set(reflect.ValueOf(&i))
+			case reflect.TypeOf(uint64(0)):
+				var i uint64
+				i, err = f.GetUint64(flagName)
+				fieldValue.SetUint(i)
+			case reflect.TypeOf((*uint64)(nil)):
+				var i uint64
+				i, err = f.GetUint64(flagName)
+				fieldValue.Set(reflect.ValueOf(&i))
+			case reflect.TypeOf(""):
+				var s string
+				s, err = f.GetString(flagName)
+				fieldValue.SetString(s)
+			case reflect.TypeOf((*string)(nil)):
+				var s string
+				s, err = f.GetString(flagName)
+				fieldValue.Set(reflect.ValueOf(&s))
+			case reflect.TypeOf([]string{}):
+				var s []string
+				s, err = f.GetStringArray(flagName)
+				fieldValue.Set(reflect.ValueOf(s))
+			case reflect.TypeOf([]float64{}):
+				var s []float64
+				s, err = f.GetFloat64Slice(flagName)
+				fieldValue.Set(reflect.ValueOf(s))
+			case reflect.TypeOf([]*float64{}):
+				var s []float64
+				s, err = f.GetFloat64Slice(flagName)
+				var sN []*float64
+				for _, v := range s {
+					v := v
+					if math.IsNaN(v) {
+						sN = append(sN, (*float64)(nil))
+					} else {
+						sN = append(sN, &v)
+					}
+				}
+				fieldValue.Set(reflect.ValueOf(sN))
 			default:
-				return false, fmt.Errorf("unknown type: %v", typ.Kind())
+				return false, fmt.Errorf("unknown type: %v", fieldValue.Type())
 			}
 			if err != nil {
 				return false, err
-			}
-			if fieldValue.Kind() == reflect.Pointer {
-				if fieldValue.IsNil() {
-					newValue := reflect.ValueOf(shelly.BoolPtr(true))
-					fieldValue.Set(newValue)
-				} else {
-					fieldValue.Set(reflect.ValueOf(v))
-				}
 			}
 		}
 		return fv.Changed, nil
@@ -185,6 +272,8 @@ func newFlagFactory(f *pflag.FlagSet, method string) something {
 			return false, nil
 		}
 		switch typ.Kind() {
+		case reflect.Interface:
+			return false, nil
 		case reflect.Pointer:
 			return ff(typ.Elem(), fieldValue.Elem(), name, prefix)
 		case reflect.String:
@@ -220,6 +309,38 @@ func newFlagFactory(f *pflag.FlagSet, method string) something {
 			f.Float32(flagName, 0, desc)
 		case reflect.Float64:
 			f.Float64(flagName, 0, desc)
+		case reflect.Slice:
+			switch typ {
+			case reflect.TypeOf([]string{}):
+				desc := fmt.Sprintf(
+					"Set the %q field on the %q request.\n--%s mbe specified multiple times for additional values.",
+					name,
+					method,
+					flagName,
+				)
+				f.StringArray(flagName, nil, desc)
+			case reflect.TypeOf([]float64{}):
+				desc := fmt.Sprintf(
+					"Set the %q field on the %q request.\n--%s may be specified multiple times for additional values.",
+					name,
+					method,
+					flagName,
+				)
+				f.Float64Slice(flagName, nil, desc)
+			case reflect.TypeOf([]*float64{}):
+				desc := fmt.Sprintf(
+					"Set the %q field on the %q request.\n--%s may be specified multiple times for additional values.\nSet NaN to specify null values.",
+					name,
+					method,
+					flagName,
+				)
+				f.Float64Slice(flagName, nil, desc)
+			case reflect.TypeOf(json.RawMessage(nil)):
+				return false, nil
+			default:
+				return false, fmt.Errorf("unknown slice type: %v", typ)
+			}
+
 		default:
 			return false, fmt.Errorf("unknown type: %v", typ.Kind())
 		}

@@ -24,7 +24,7 @@ func init() {
 	}
 	discoveryFlags(switchCmd.PersistentFlags(), false)
 	for _, req := range switchRequests {
-		c, err := gencobra.RequestToCmd(req)
+		c, err := gencobra.RequestToCmd(ctx, req, Output)
 		if err != nil {
 			panic("building switch subcommands: " + err.Error())
 		}
