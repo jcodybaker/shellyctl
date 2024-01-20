@@ -34,12 +34,17 @@ func init() {
 	prometheusCmd.Flags().DurationVar(&promDeviceTimeout, "device-timeout", promserver.DefaultDeviceTimeout, "set the maximum time allowed for a device to respond to it probe.")
 	discoveryFlags(prometheusCmd.Flags(), true)
 	rootCmd.AddCommand(prometheusCmd)
+	rootCmd.AddGroup(&cobra.Group{
+		ID:    "servers",
+		Title: "Servers:",
+	})
 }
 
 var prometheusCmd = &cobra.Command{
 	Use:     "prometheus",
+	GroupID: "servers",
 	Aliases: []string{"prom"},
-	Short:   "host a prometheus metrics exporter for shelly devices",
+	Short:   "Host a prometheus metrics exporter for shelly devices",
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx, signalStop := signal.NotifyContext(ctx, os.Interrupt)
 		defer signalStop()

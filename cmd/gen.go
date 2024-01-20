@@ -11,7 +11,9 @@ import (
 var (
 	bleComponent = &gencobra.Component{
 		Parent: &cobra.Command{
-			Use: "ble",
+			GroupID: "Component RPCs",
+			Use:     "ble",
+			Short:   "RPCs related to Bluetooth Low-Energy",
 		},
 		Requests: []shelly.RPCRequestBody{
 			&shelly.BLEGetStatusRequest{},
@@ -22,7 +24,9 @@ var (
 
 	cloudComponent = &gencobra.Component{
 		Parent: &cobra.Command{
-			Use: "cloud",
+			GroupID: "Component RPCs",
+			Use:     "cloud",
+			Short:   "RPCs related to Shelly Cloud",
 		},
 		Requests: []shelly.RPCRequestBody{
 			&shelly.CloudGetStatusRequest{},
@@ -33,7 +37,9 @@ var (
 
 	coverComponent = &gencobra.Component{
 		Parent: &cobra.Command{
-			Use: "cover",
+			GroupID: "Component RPCs",
+			Use:     "cover",
+			Short:   "RPCs related to Cover components",
 		},
 		Requests: []shelly.RPCRequestBody{
 			&shelly.CoverGetStatusRequest{},
@@ -50,7 +56,9 @@ var (
 
 	inputComponent = &gencobra.Component{
 		Parent: &cobra.Command{
-			Use: "input",
+			GroupID: "Component RPCs",
+			Use:     "input",
+			Short:   "RPCs related to input components",
 		},
 		Requests: []shelly.RPCRequestBody{
 			&shelly.InputGetStatusRequest{},
@@ -62,7 +70,9 @@ var (
 
 	lightComponent = &gencobra.Component{
 		Parent: &cobra.Command{
-			Use: "light",
+			GroupID: "Component RPCs",
+			Use:     "light",
+			Short:   "RPCs related to light components",
 		},
 		Requests: []shelly.RPCRequestBody{
 			&shelly.LightGetStatusRequest{},
@@ -75,7 +85,9 @@ var (
 
 	mqttComponent = &gencobra.Component{
 		Parent: &cobra.Command{
-			Use: "mqtt",
+			GroupID: "Component RPCs",
+			Use:     "mqtt",
+			Short:   "RPCs related to MQTT configuration and status",
 		},
 		Requests: []shelly.RPCRequestBody{
 			&shelly.MQTTGetStatusRequest{},
@@ -86,7 +98,9 @@ var (
 
 	scheduleComponent = &gencobra.Component{
 		Parent: &cobra.Command{
-			Use: "schedule",
+			GroupID: "Component RPCs",
+			Use:     "schedule",
+			Short:   "RPCs related to managing schedules",
 		},
 		Requests: []shelly.RPCRequestBody{
 			// &shelly.ScheduleCreateRequest{},
@@ -98,7 +112,9 @@ var (
 
 	shellyComponent = &gencobra.Component{
 		Parent: &cobra.Command{
-			Use: "shelly",
+			GroupID: "Component RPCs",
+			Use:     "shelly",
+			Short:   "RPCs related device management, configuration, and status",
 		},
 		Requests: []shelly.RPCRequestBody{
 			&shelly.ShellyGetStatusRequest{},
@@ -111,7 +127,9 @@ var (
 
 	switchComponent = &gencobra.Component{
 		Parent: &cobra.Command{
-			Use: "switch",
+			GroupID: "Component RPCs",
+			Use:     "switch",
+			Short:   "RPCs related to switch components",
 		},
 		Requests: []shelly.RPCRequestBody{
 			&shelly.SwitchGetConfigRequest{},
@@ -124,7 +142,9 @@ var (
 
 	sysComponent = &gencobra.Component{
 		Parent: &cobra.Command{
-			Use: "sys",
+			GroupID: "Component RPCs",
+			Use:     "sys",
+			Short:   "RPCs related to system management and status",
 		},
 		Requests: []shelly.RPCRequestBody{
 			&shelly.SysGetConfigRequest{},
@@ -135,7 +155,9 @@ var (
 
 	wifiComponent = &gencobra.Component{
 		Parent: &cobra.Command{
-			Use: "wifi",
+			GroupID: "Component RPCs",
+			Use:     "wifi",
+			Short:   "RPCs related to wifi configuration and status.",
 		},
 		Requests: []shelly.RPCRequestBody{
 			&shelly.WifiGetStatusRequest{},
@@ -166,28 +188,35 @@ func init() {
 	if err := gencobra.ComponentsToCmd(components, baggage); err != nil {
 		log.Panic().Err(err).Msg("generating menu for API commands")
 	}
+	rootCmd.AddGroup(&cobra.Group{
+		ID:    "Component RPCs",
+		Title: "Device Component RPCs:",
+	})
 	for _, c := range components {
 		discoveryFlags(c.Parent.PersistentFlags(), false)
 		rootCmd.AddCommand(c.Parent)
 		c.Parent.Run = func(cmd *cobra.Command, args []string) {
 			c.Parent.Help()
 		}
-		c.Parent.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-			if err := rootCmd.PersistentPreRunE(cmd, args); err != nil {
-				return err
-			}
-			ctx := cmd.Context()
-			l := log.Ctx(ctx)
-			dOpts, err := discoveryOptionsFromFlags()
-			if err != nil {
-				l.Fatal().Err(err).Msg("parsing flags")
-			}
+		for _, childCmd := range c.Parent.Commands() {
+			childRun := childCmd.RunE
+			childCmd.RunE = func(cmd *cobra.Command, args []string) error {
+				if err := rootCmd.PersistentPreRunE(cmd, args); err != nil {
+					return err
+				}
+				ctx := cmd.Context()
+				l := log.Ctx(ctx)
+				dOpts, err := discoveryOptionsFromFlags()
+				if err != nil {
+					l.Fatal().Err(err).Msg("parsing flags")
+				}
 
-			baggage.Discoverer = discovery.NewDiscoverer(dOpts...)
-			if err := discoveryAddHosts(ctx, baggage.Discoverer); err != nil {
-				l.Fatal().Err(err).Msg("adding devices")
+				baggage.Discoverer = discovery.NewDiscoverer(dOpts...)
+				if err := discoveryAddHosts(ctx, baggage.Discoverer); err != nil {
+					l.Fatal().Err(err).Msg("adding devices")
+				}
+				return childRun(cmd, args)
 			}
-			return nil
 		}
 	}
 }
