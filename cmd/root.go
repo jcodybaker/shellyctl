@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jcodybaker/shellyctl/pkg/logcompat"
+	"github.com/jcodybaker/shellyctl/pkg/outputter"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -15,8 +16,10 @@ import (
 )
 
 var (
-	ctx      context.Context
-	logLevel string
+	ctx             context.Context
+	logLevel        string
+	outputFormat    string
+	activeOutputter outputter.Outputter = outputter.JSON
 )
 
 var rootCmd = &cobra.Command{
@@ -30,6 +33,7 @@ func init() {
 		rootCmd.Help()
 	}
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "warn", "threshold for outputing logs: trace, debug, info, warn, error, fatal, panic")
+	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "o", "text", "desired output format: json, text, log")
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
@@ -57,13 +61,26 @@ func init() {
 
 		logcompat.Init(&log.Logger)
 		ctx = log.Logger.WithContext(ctx)
+
+		var err error
+		activeOutputter, err = outputter.ByName(outputFormat)
+		if err != nil {
+			return err
+		}
+
+		cmd.SetContext(ctx)
+
 		return nil
 	}
 }
 
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
+	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func Output(ctx context.Context, msg, field string, f any) error {
+	return activeOutputter(ctx, msg, field, f)
 }

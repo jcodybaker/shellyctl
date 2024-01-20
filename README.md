@@ -16,14 +16,30 @@ Usage:
   shellyctl [flags]
   shellyctl [command]
 
-Available Commands:
+Device Component RPCs:
+  ble         RPCs related to Bluetooth Low-Energy
+  cloud       RPCs related to Shelly Cloud
+  cover       RPCs related to Cover components
+  input       RPCs related to input components
+  light       RPCs related to light components
+  mqtt        RPCs related to MQTT configuration and status
+  schedule    RPCs related to managing schedules
+  shelly      RPCs related device management, configuration, and status
+  switch      RPCs related to switch components
+  sys         RPCs related to system management and status
+  wifi        RPCs related to wifi configuration and status.
+
+Servers:
+  prometheus  Host a prometheus metrics exporter for shelly devices
+
+Additional Commands:
   completion  Generate the autocompletion script for the specified shell
   help        Help about any command
-  prometheus  host a prometheus metrics exporter for shelly devices
 
 Flags:
-  -h, --help               help for shellyctl
-      --log-level string   threshold for outputing logs: trace, debug, info, warn, error, fatal, panic (default "warn")
+  -h, --help                   help for shellyctl
+      --log-level string       threshold for outputing logs: trace, debug, info, warn, error, fatal, panic (default "warn")
+  -o, --output-format string   desired output format: json, text, log (default "text")
 
 Use "shellyctl [command] --help" for more information about a command.
 ```
@@ -65,7 +81,6 @@ Global Flags:
 * BLE Support
 * Device Provisioning
 * Device Backup & Restore / Support for configuration as code style provisioning.
-* CLI Support for all configuration
 * MQTT / WebSocket support
 
 

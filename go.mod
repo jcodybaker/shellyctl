@@ -5,7 +5,7 @@ go 1.21.3
 require (
 	github.com/go-logr/zerologr v1.2.3
 	github.com/hashicorp/mdns v1.0.5
-	github.com/jcodybaker/go-shelly v0.0.0-20240102021519-003ee5baa6a0
+	github.com/jcodybaker/go-shelly v0.0.0-20240120015947-a59697f0c673
 	github.com/mongoose-os/mos v0.0.0-20230313140341-b44964e63a92
 	github.com/rs/zerolog v1.31.0
 	github.com/spf13/cobra v1.8.0
@@ -55,6 +55,7 @@ require (
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/stretchr/testify v1.8.4 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
@@ -77,4 +78,5 @@ require (
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	sigs.k8s.io/yaml v1.4.0 // indirect
 )
