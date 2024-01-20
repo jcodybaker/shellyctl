@@ -5,7 +5,7 @@ go 1.21.3
 require (
 	github.com/go-logr/zerologr v1.2.3
 	github.com/hashicorp/mdns v1.0.5
-	github.com/jcodybaker/go-shelly v0.0.0-20240115221010-dd34db830ac1
+	github.com/jcodybaker/go-shelly v0.0.0-20240120015947-a59697f0c673
 	github.com/mongoose-os/mos v0.0.0-20230313140341-b44964e63a92
 	github.com/rs/zerolog v1.31.0
 	github.com/spf13/cobra v1.8.0

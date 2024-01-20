@@ -1,7 +1,6 @@
 package gencobra
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,21 +9,77 @@ import (
 	"strings"
 
 	"github.com/jcodybaker/go-shelly"
+	"github.com/jcodybaker/shellyctl/pkg/discovery"
 	"github.com/jcodybaker/shellyctl/pkg/outputter"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/stoewer/go-strcase"
 )
 
-func RequestToCmd(ctx context.Context, req shelly.RPCRequestBody, out outputter.Outputter) (*cobra.Command, error) {
+type Baggage struct {
+	Discoverer *discovery.Discoverer
+	Output     outputter.Outputter
+}
+
+type Component struct {
+	Parent   *cobra.Command
+	Requests []shelly.RPCRequestBody
+}
+
+func ComponentsToCmd(components []*Component, baggage *Baggage) error {
+	for _, c := range components {
+		for _, r := range c.Requests {
+			cmd, err := RequestToCmd(r, baggage)
+			if err != nil {
+				return err
+			}
+			c.Parent.AddCommand(cmd)
+		}
+	}
+	return nil
+}
+
+func RequestToCmd(req shelly.RPCRequestBody, baggage *Baggage) (*cobra.Command, error) {
 	c := &cobra.Command{}
 	c.RunE = func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
+		ctx := c.Context()
+		ll := log.Ctx(ctx).With().Str("request", req.Method()).Logger()
 		if _, err := forEachStructField(reflect.ValueOf(req), "", newFlagReader(c.Flags(), req.Method())); err != nil {
 			return err
 		}
-		if err := out(ctx, fmt.Sprintf("Sending %q request", req.Method()), "request", req); err != nil {
+
+		if err := outputter.Log(ctx, fmt.Sprintf("Sending %q request", req.Method()), "request", req); err != nil {
 			return err
+		}
+
+		if _, err := baggage.Discoverer.MDNSSearch(ctx); err != nil {
+			return err
+		}
+
+		for _, d := range baggage.Discoverer.AllDevices() {
+			ll := ll.With().Str("instance", d.URI).Logger()
+			conn, err := d.Open(ctx)
+			if err != nil {
+				return err
+			}
+			ll.Info().Msg("connected to device")
+			defer func() {
+				if err := conn.Disconnect(ctx); err != nil {
+					ll.Warn().Err(err).Msg("disconnecting from device")
+				}
+			}()
+			resp := req.NewResponse()
+			_, err = shelly.Do(ctx, conn, req, resp)
+			if err != nil {
+				return fmt.Errorf("executing %s: %w", req.Method(), err)
+			}
+			baggage.Output(
+				ctx,
+				fmt.Sprintf("Response to %s command", req.Method()),
+				"",
+				resp,
+			)
 		}
 		return nil
 	}
@@ -47,9 +102,9 @@ func transformMethodName(n string) (string, error) {
 	return strcase.KebabCase(subCommand), nil
 }
 
-type something func(fieldType reflect.Type, fieldValue reflect.Value, name, prefix string) (bool, error)
+type fieldFunc func(fieldType reflect.Type, fieldValue reflect.Value, name, prefix string) (bool, error)
 
-func forEachStructField(v reflect.Value, prefix string, f something) (bool, error) {
+func forEachStructField(v reflect.Value, prefix string, f fieldFunc) (bool, error) {
 	var mutatedStruct bool
 
 	if v.Kind() == reflect.Pointer {
@@ -113,7 +168,7 @@ func forEachStructField(v reflect.Value, prefix string, f something) (bool, erro
 	return mutatedStruct, nil
 }
 
-func newFlagReader(f *pflag.FlagSet, method string) something {
+func newFlagReader(f *pflag.FlagSet, method string) fieldFunc {
 	ff := func(typ reflect.Type, fieldValue reflect.Value, name, prefix string) (bool, error) {
 		flagName := strcase.KebabCase(name)
 		if prefix != "" {
@@ -252,8 +307,8 @@ func newFlagReader(f *pflag.FlagSet, method string) something {
 	return ff
 }
 
-func newFlagFactory(f *pflag.FlagSet, method string) something {
-	var ff something
+func newFlagFactory(f *pflag.FlagSet, method string) fieldFunc {
+	var ff fieldFunc
 	ff = func(typ reflect.Type, fieldValue reflect.Value, name, prefix string) (bool, error) {
 		if typ.Kind() == reflect.Pointer {
 			typ = typ.Elem()
