@@ -77,7 +77,7 @@ func RequestToCmd(req shelly.RPCRequestBody, baggage *Baggage) (*cobra.Command, 
 			baggage.Output(
 				ctx,
 				fmt.Sprintf("Response to %s command", req.Method()),
-				"",
+				"response",
 				resp,
 			)
 		}

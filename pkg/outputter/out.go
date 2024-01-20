@@ -36,17 +36,22 @@ func Log(ctx context.Context, msg, field string, f any) error {
 // Text encodes the data as a structured log.
 func Text(ctx context.Context, msg, field string, f any) error {
 	fmt.Printf("%s:\n", msg)
-	text(reflect.ValueOf(f), "  ")
+	text(reflect.ValueOf(f), "  ", "  ")
+	fmt.Println("")
 	return nil
 }
 
-func text(v reflect.Value, indent string) error {
+func text(v reflect.Value, firstIndent, indent string) error {
 	if v.Kind() == reflect.Pointer {
-		text(v.Elem(), indent)
+		text(v.Elem(), firstIndent, indent)
 	}
 	if v.Kind() == reflect.Struct {
 		t := v.Type()
 		for i := 0; i < v.NumField(); i++ {
+			lineIndent := indent
+			if i == 0 {
+				lineIndent = firstIndent
+			}
 			fieldInfo := t.Field(i)
 			if !fieldInfo.IsExported() {
 				continue
@@ -62,20 +67,49 @@ func text(v reflect.Value, indent string) error {
 				fT = fT.Elem()
 			}
 			if fT.Kind() == reflect.Struct {
-				fmt.Printf("%s%s:\n", indent, fieldName)
-				if err := text(f, "  "+indent); err != nil {
+				fmt.Printf("%s%s:\n", lineIndent, fieldName)
+				if err := text(f, "  "+indent, "  "+indent); err != nil {
 					return err
 				}
 				continue
 			}
-			if fT.Kind() == reflect.Slice {
-				b, err := json.Marshal(f.Interface())
-				if err != nil {
-					return fmt.Errorf("printing array: %w", err)
+			switch fT.Kind() {
+			case reflect.Slice:
+				if f.Len() == 0 {
+					fmt.Printf("%s%s: NULL\n", lineIndent, fieldName)
+				} else if fT.Elem().Kind() == reflect.Struct {
+					fmt.Printf("%s%s:\n", lineIndent, fieldName)
+					for j := 0; j < f.Len(); j++ {
+						if err := text(f.Index(j), indent+"- ", indent+"  "); err != nil {
+							return err
+						}
+					}
+				} else if fT.Elem().Kind() == reflect.Pointer && fT.Elem().Elem().Kind() == reflect.Struct {
+					fmt.Printf("%s%s:\n", lineIndent, fieldName)
+					for j := 0; j < f.Len(); j++ {
+						sliceValue := f.Index(j)
+						if sliceValue.IsNil() {
+							fmt.Printf("%s: NULL", indent+"  ")
+						} else {
+							if err := text(f.Index(j).Elem(), indent+"- ", indent+"  "); err != nil {
+								return err
+							}
+						}
+					}
+				} else {
+					b, err := json.Marshal(f.Interface())
+					if err != nil {
+						return fmt.Errorf("printing array: %w", err)
+					}
+					fmt.Printf("%s%s: %s\n", lineIndent, fieldName, string(b))
 				}
-				fmt.Printf("%s%s: %s\n", indent, fieldName, string(b))
-			} else {
-				fmt.Printf("%s%s: %v\n", indent, fieldName, f.Interface())
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+				reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				fmt.Printf("%s%s: %d\n", lineIndent, fieldName, f.Interface())
+			case reflect.Float32, reflect.Float64:
+				fmt.Printf("%s%s: %f\n", lineIndent, fieldName, f.Interface())
+			default:
+				fmt.Printf("%s%s: %v\n", lineIndent, fieldName, f.Interface())
 			}
 		}
 	}
@@ -119,8 +153,17 @@ func spaceDelimited(s string) string {
 	var last rune
 	var wordStart int
 	for i, r := range s {
-		if unicode.IsUpper(r) && (last == rune(0) || !unicode.IsUpper(last)) {
-			word := strings.TrimSpace(s[wordStart:i])
+		isUpper := unicode.IsUpper(r)
+		var nextIsLower, lastIsUpper bool
+		if asRunes := []rune(s[i:]); len(asRunes) >= 2 && unicode.IsLower(asRunes[1]) {
+			nextIsLower = true
+		}
+		if last != rune(0) && unicode.IsUpper(last) {
+			lastIsUpper = true
+		}
+
+		if isUpper && (nextIsLower || !lastIsUpper) {
+			word := strings.Trim(s[wordStart:i], " _-")
 			if word != "" {
 				out = append(out, word)
 			}
@@ -128,7 +171,7 @@ func spaceDelimited(s string) string {
 		}
 		last = r
 	}
-	word := strings.TrimSpace(s[wordStart:])
+	word := strings.Trim(s[wordStart:], " _-")
 	if word != "" {
 		out = append(out, word)
 	}
