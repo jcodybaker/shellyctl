@@ -16,6 +16,8 @@ import (
 var (
 	hosts                []string
 	mdnsSearch           bool
+	bleSearch            bool
+	bleDevices           []string
 	mdnsInterface        string
 	mdnsZone             string
 	mdnsService          string
@@ -39,6 +41,18 @@ func discoveryFlags(f *pflag.FlagSet, withTTL bool) {
 		"mdns-search",
 		false,
 		"if true, devices will be discovered via mDNS")
+
+	f.BoolVar(
+		&bleSearch,
+		"ble-search",
+		false,
+		"if true, devices will be discovered via Bluetooth Low-Energy")
+
+	f.StringArrayVar(
+		&bleDevices,
+		"ble-device",
+		[]string{},
+		"MAC address of a single bluetooth low-energy device. May be specified multiple times to work with multiple devices.")
 
 	f.StringVar(
 		&mdnsInterface,
@@ -96,7 +110,7 @@ func discoveryFlags(f *pflag.FlagSet, withTTL bool) {
 }
 
 func discoveryOptionsFromFlags() (opts []discovery.DiscovererOption, err error) {
-	if len(hosts) == 0 && !mdnsSearch {
+	if len(hosts) == 0 && len(bleDevices) == 0 && !mdnsSearch && !bleSearch {
 		return nil, errors.New("no hosts and or discovery (mDNS)")
 	}
 	if mdnsInterface != "" {
@@ -125,12 +139,27 @@ func discoveryOptionsFromFlags() (opts []discovery.DiscovererOption, err error) 
 	return opts, err
 }
 
-func discoveryAddHosts(ctx context.Context, d *discovery.Discoverer) error {
+func discoveryAddDevices(ctx context.Context, d *discovery.Discoverer) error {
 	l := log.Ctx(ctx)
 	var wg sync.WaitGroup
 	concurrencyLimit := make(chan struct{}, discoveryConcurrency)
 	defer close(concurrencyLimit)
 	defer wg.Wait()
+	if len(bleDevices) > 0 {
+		select {
+		case concurrencyLimit <- struct{}{}:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		wg.Add(1)
+		go func() {
+			defer func() {
+				wg.Done()
+				<-concurrencyLimit
+			}()
+			discoveryAddBLEDevices(ctx, d)
+		}()
+	}
 	for _, h := range hosts {
 		// This chan send will block if the we exceed discoveryConcurrency.
 		select {
@@ -152,6 +181,24 @@ func discoveryAddHosts(ctx context.Context, d *discovery.Discoverer) error {
 				l.Warn().Err(err).Msg("adding device; continuing because `skip-failed-hosts=true`")
 			}
 		}()
+	}
+	return nil
+}
+
+func discoveryAddBLEDevices(ctx context.Context, d *discovery.Discoverer) error {
+	l := log.Ctx(ctx)
+	for _, mac := range bleDevices {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		_, err := d.AddBLE(ctx, mac)
+		if err == nil {
+			continue
+		}
+		if !skipFailedHosts {
+			l.Fatal().Err(err).Msg("adding device")
+		}
+		l.Warn().Err(err).Msg("adding device; continuing because `skip-failed-hosts=true`")
 	}
 	return nil
 }

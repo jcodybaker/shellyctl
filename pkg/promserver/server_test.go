@@ -745,7 +745,7 @@ shelly_status_voltage{component="switch",component_name="Lift Pump",device_name=
 			require.NoError(t, err)
 			t.Log(string(body))
 
-			expect := strings.NewReplacer("$INSTANCE_DEVICE_1", d1.URI, "$MAC_DEVICE_1", d1.MACAddr).Replace(tc.expect)
+			expect := strings.NewReplacer("$INSTANCE_DEVICE_1", d1.Instance(), "$MAC_DEVICE_1", d1.MACAddr).Replace(tc.expect)
 			require.NoError(t, testutil.ScrapeAndCompare(metricserver.URL, bytes.NewBufferString(expect)))
 		})
 	}

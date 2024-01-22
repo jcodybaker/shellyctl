@@ -17,9 +17,9 @@ const (
 	mdnsSearchBuffer = 50
 )
 
-// MDNSSearch finds new devices via mDNS.
-func (d *Discoverer) MDNSSearch(ctx context.Context) ([]*Device, error) {
-	if !d.mdnsEnabled {
+// SearchMDNS finds new devices via mDNS.
+func (d *Discoverer) SearchMDNS(ctx context.Context) ([]*Device, error) {
+	if !d.mdnsSearchEnabled {
 		return nil, nil
 	}
 	c := make(chan *mdns.ServiceEntry, mdnsSearchBuffer)

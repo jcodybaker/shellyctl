@@ -56,7 +56,7 @@ var prometheusCmd = &cobra.Command{
 			l.Fatal().Err(err).Msg("parsing flags")
 		}
 		disc := discovery.NewDiscoverer(dOpts...)
-		if err := discoveryAddHosts(ctx, disc); err != nil {
+		if err := discoveryAddDevices(ctx, disc); err != nil {
 			l.Fatal().Err(err).Msg("adding devices")
 		}
 

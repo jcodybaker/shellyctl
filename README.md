@@ -3,10 +3,12 @@ shellyctl is an unofficial command line client for the [Shelly Gen2 API](https:/
 
 ## Features
 * mDNS discovery of shelly devices on the local network.
+* Bluetooth Low Energy (BLE) discovery of shelly devices for RPC, monitoring, and initial setup.
+* Command line interface for documented APIs.
 * prometheus metrics endpoint with the status of known devices.
 
 ## Maturity
-This library is currently in active development (as of December 2023). It has meaningful gaps in testing and functionality. At this stage there is no guarantee of backwards compatibility. Once the project reaches a stable state, I will begin crafting releases with semantic versioning. 
+This library is currently in active development (as of January 2024). It has meaningful gaps in testing and functionality. At this stage there is no guarantee of backwards compatibility. Once the project reaches a stable state, I will begin tagging releases with semantic versioning. 
 
 ## Usage
 ```
@@ -77,9 +79,99 @@ Global Flags:
       --log-level string   threshold for outputing logs: trace, debug, info, warn, error, fatal, panic (default "warn")
 ```
 
+### RPC Command-line
+
+#### Example
+```
+$ shellyctl switch set-config --ble-device=D4:D4:DA:09:2E:B6 --auto-off=true --auto-off-delay=60
+
+Response to Switch.SetConfig command:
+  Restart Required: false
+
+$ shellyctl switch set --ble-device=D4:D4:DA:09:2E:B6 --on=true
+
+Response to Switch.Set command:
+  Was On: true
+```
+
+#### Menu Heirarchy
+- `ble`
+  - `get-config` ([BLE.GetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/BLE/#blegetconfig))
+  - `get-status` ([BLE.GetStatus](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/BLE/#blegetstatus))
+  - `set-config` ([BLE.SetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/BLE/#blesetconfig))
+- `cloud`
+  - `get-config` ([Cloud.GetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cloud/#cloudgetconfig))
+  - `get-status` ([Cloud.GetStatus](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cloud/#cloudgetstatus))
+  - `set-config` ([Cloud.SetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cloud/#cloudsetconfig))
+- `cover`
+  - `calibrate` ([Cover.Calibrate](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cover/#covercalibrate))
+  - `close` ([Cover.Close](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cover/#coverclose))
+  - `get-config` ([Cover.GetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cover/#covergetconfig))
+  - `get-status` ([Cover.GetStatus](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cover/#covergetstatus))
+  - `go-to-position` ([Cover.GoToPosition](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cover/#covergotoposition))
+  - `open` ([Cover.Open](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cover/#coveropen))
+  - `reset-counters` ([Cover.ResetCounters](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cover/#coverresetcounters))
+  - `set-config` ([Cover.SetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cover/#coversetconfig))
+  - `stop` ([Cover.Stop](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cover/#coverstop))
+- input
+  - `check-expression` ([Input.GetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Input#inputcheckexpression))
+  - `get-config` ([Input.GetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Input#inputsetconfig))
+  - `get-status` ([Input.GetStatus](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Input#inputgetstatus))
+  - `set-config` ([Input.SetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Input#inputsetconfig))
+- `light`
+  - `get-config` ([Light.GetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Light#lightgetconfig))
+  - `get-status` ([Light.GetStatus](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Light#lightgetstatus))
+  - `set` ([Light.Set](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Light#lightset))
+  - `set-config` ([Light.SetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Light#lightsetconfig))
+  - `toggle` ([Light.Toggle](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Light#lighttoggle))
+- `mqtt`
+  - `get-config` ([MQTT.GetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Mqtt#mqttgetconfig))
+  - `get-status` ([MQTT.GetStatus](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Mqtt#mqttgetstatus))
+  - `set-config` ([MQTT.SetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Mqtt#mqttsetconfig))
+- `schedule`
+  - `delete` ([Schedule.Delete](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Schedule#scheduledelete))
+  - `delete-all` ([Schedule.DeleteAll](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Schedule#scheduledeleteall))
+- `shelly`
+  - `check-for-update` ([Shelly.CheckForUpdate](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellycheckforupdate))
+  - `get-config` ([Shelly.GetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellygetconfig))
+  - `get-status` ([Shelly.GetStatus](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellygetstatus))
+  - `reboot` ([Shelly.Reboot](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellyreboot))
+  - `set-auth` ([Shelly.SetAuth](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellysetauth))
+- `switch`
+  - `get-config` ([Switch.GetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Switch#switchgetconfig))
+  - `get-status` ([Switch.GetStatus](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Switch#switchgetstatusg))
+  - `set` ([Switch.Set](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Switch#switchset))
+  - `set-config` ([Switch.SetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Switch#switchsetconfig))
+  - `toggle` ([Switch.Toggle](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Switch#switchtoggle))
+- `sys`
+  - `get-config` ([Sys.GetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Sys#sysgetconfig))
+  - `get-status` ([Sys.GetStatus](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Sys#sysgetstatus))
+  - `set-config` ([Sys.SetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Sys#syssetconfig))
+- `wifi`
+  - `get-config` ([WiFi.GetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/WiFi#wifigetconfig))
+  - `get-status` ([WiFi.GetStatus](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/WiFi#wifigetstatus))
+  - `set-config` ([WiFi.SetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/WiFi#wifisetconfig))
+
+
+### Device Initial Setup
+By default Shelly devices can be configured with RPCs over Bluetooth Low Energy (BLE) channel. The initial configuration is therefore just a matter of configuring network connectivity, optionally disabling BLE, and optionally setting authentication.
+```
+$ shellyctl wifi set-config --sta-enable=true --sta-ssid=INTERNET --sta-pass=password --ble-device=AA:BB:CC:DD:EE:FF
+
+Response to Wifi.SetConfig command:
+  Restart Required: false
+
+$ shellyctl ble set-config --enable=false --host=192.168.1.62
+
+Response to BLE.SetConfig command:
+  Restart Required: true
+
+$ shellyctl shelly reboot --host=192.168.1.62
+
+Response to Shelly.Reboot command:
+```
+
 ## TODO
-* BLE Support
-* Device Provisioning
 * Device Backup & Restore / Support for configuration as code style provisioning.
 * MQTT / WebSocket support
 

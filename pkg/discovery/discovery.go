@@ -4,13 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/hashicorp/mdns"
+	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
+	"tinygo.org/x/bluetooth"
 )
 
 const (
@@ -25,43 +27,34 @@ const (
 
 func NewDiscoverer(opts ...DiscovererOption) *Discoverer {
 	d := &Discoverer{
-		deviceTTL:     DefaultDeviceTTL,
-		now:           time.Now,
-		knownDevices:  make(map[string]*Device),
-		mdnsZone:      DefaultMDNSZone,
-		mdnsService:   DefaultMDNSService,
-		searchTimeout: DefaultMDNSSearchTimeout,
-		concurrency:   DefaultConcurrency,
-		mdnsQueryFunc: mdns.Query,
+		knownDevices: make(map[string]*Device),
+		options: &options{
+			bleAdapter:    bluetooth.DefaultAdapter,
+			now:           time.Now,
+			deviceTTL:     DefaultDeviceTTL,
+			mdnsZone:      DefaultMDNSZone,
+			mdnsService:   DefaultMDNSService,
+			searchTimeout: DefaultMDNSSearchTimeout,
+			concurrency:   DefaultConcurrency,
+			mdnsQueryFunc: mdns.Query,
+		},
 	}
 	for _, o := range opts {
 		o(d)
 	}
+	d.enableBLEAdapter = sync.OnceValue[error](func() error {
+		log.Logger.Debug().Msg("enabling BLE adapter")
+		return d.bleAdapter.Enable()
+	})
 	return d
 }
 
 // Discoverer finds shelly gen 2 devices and provides basic metadata.
 type Discoverer struct {
+	*options
 	knownDevices map[string]*Device
 
-	mdnsInterface *net.Interface
-	mdnsZone      string
-	mdnsService   string
-	mdnsEnabled   bool
-
-	searchTimeout time.Duration
-	concurrency   int
-
-	preferIPVersion string
-
-	mdnsQueryFunc func(*mdns.QueryParam) error
-	now           func() time.Time
-
 	lock sync.Mutex
-
-	// deviceTTL is relevant for long-lived commands (like prometheus metrics server) when
-	// mixed with mDNS or other ephemeral discovery.
-	deviceTTL time.Duration
 }
 
 // AddDeviceByAddress attempts to parse a user-provided URI and add the device.
@@ -98,13 +91,18 @@ func (d *Discoverer) AddDeviceByAddress(ctx context.Context, addr string, opts .
 	}
 
 	dev := &Device{
-		URI:    u.String(),
+		uri:    u.String(),
 		source: sourceManual,
 	}
 	if err = dev.resolveSpecs(ctx); err != nil {
 		return nil, err
 	}
 	dev.lastSeen = d.now()
+	dev = d.addDevice(dev, opts...)
+	return dev, nil
+}
+
+func (d *Discoverer) addDevice(dev *Device, opts ...DeviceOption) *Device {
 	for _, o := range opts {
 		o(dev)
 	}
@@ -112,10 +110,10 @@ func (d *Discoverer) AddDeviceByAddress(ctx context.Context, addr string, opts .
 	defer d.lock.Unlock()
 	if existingDev, ok := d.knownDevices[dev.MACAddr]; ok {
 		existingDev.lastSeen = dev.lastSeen
-		return existingDev, nil
+		return existingDev
 	}
 	d.knownDevices[dev.MACAddr] = dev
-	return dev, nil
+	return dev
 }
 
 // AllDevices returns all known devices.
@@ -127,4 +125,32 @@ func (d *Discoverer) AllDevices() []*Device {
 		out = append(out, dev)
 	}
 	return out
+}
+
+func (d *Discoverer) Search(ctx context.Context) ([]*Device, error) {
+	if !d.bleSearchEnabled && !d.mdnsSearchEnabled {
+		return nil, nil
+	}
+	var l sync.Mutex
+	var allDevs []*Device
+	eg, ctx := errgroup.WithContext(ctx)
+	if d.bleSearchEnabled {
+		eg.Go(func() error {
+			devs, err := d.SearchBLE(ctx)
+			l.Lock()
+			defer l.Unlock()
+			allDevs = append(allDevs, devs...)
+			return err
+		})
+	}
+	if d.mdnsSearchEnabled {
+		eg.Go(func() error {
+			devs, err := d.SearchMDNS(ctx)
+			l.Lock()
+			defer l.Unlock()
+			allDevs = append(allDevs, devs...)
+			return err
+		})
+	}
+	return allDevs, eg.Wait()
 }
