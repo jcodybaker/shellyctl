@@ -212,7 +212,7 @@ func init() {
 				}
 
 				baggage.Discoverer = discovery.NewDiscoverer(dOpts...)
-				if err := discoveryAddHosts(ctx, baggage.Discoverer); err != nil {
+				if err := discoveryAddDevices(ctx, baggage.Discoverer); err != nil {
 					l.Fatal().Err(err).Msg("adding devices")
 				}
 				return childRun(cmd, args)

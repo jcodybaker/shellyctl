@@ -3,7 +3,32 @@ package discovery
 import (
 	"net"
 	"time"
+
+	"github.com/hashicorp/mdns"
+	"tinygo.org/x/bluetooth"
 )
+
+type options struct {
+	bleAdapter       *bluetooth.Adapter
+	enableBLEAdapter func() error
+	now              func() time.Time
+
+	mdnsInterface *net.Interface
+	mdnsZone      string
+	mdnsService   string
+	mdnsEnabled   bool
+
+	searchTimeout time.Duration
+	concurrency   int
+
+	// deviceTTL is relevant for long-lived commands (like prometheus metrics server) when
+	// mixed with mDNS or other ephemeral discovery.
+	deviceTTL time.Duration
+
+	preferIPVersion string
+
+	mdnsQueryFunc func(*mdns.QueryParam) error
+}
 
 // DiscovererOption provides optional parameters for the Discoverer.
 type DiscovererOption func(*Discoverer)
@@ -63,6 +88,13 @@ func WithDeviceTTL(ttl time.Duration) DiscovererOption {
 func WithMDNSSearchEnabled(enabled bool) DiscovererOption {
 	return func(d *Discoverer) {
 		d.mdnsEnabled = enabled
+	}
+}
+
+// WithBLEAdapter configures a BLE adapter for use in discovery.
+func WithBLEAdapter(ble *bluetooth.Adapter) DiscovererOption {
+	return func(d *Discoverer) {
+		d.bleAdapter = ble
 	}
 }
 

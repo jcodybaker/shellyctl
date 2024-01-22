@@ -3,6 +3,7 @@ package discovery
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/jcodybaker/go-shelly"
@@ -11,16 +12,23 @@ import (
 
 // Device describes one shelly device.
 type Device struct {
-	URI      string
+	uri      string
 	MACAddr  string
 	Specs    shelly.DeviceSpecs
 	lastSeen time.Time
 	source   discoverySource
+	ble      *BLEDevice
 }
 
 // Open creates an mongoose rpc channel to the device.
 func (d *Device) Open(ctx context.Context) (mgrpc.MgRPC, error) {
-	c, err := mgrpc.New(ctx, d.URI, mgrpc.UseHTTPPost())
+	if d.ble != nil {
+		if err := d.ble.open(ctx, d.MACAddr); err != nil {
+			return nil, err
+		}
+		return d.ble, nil
+	}
+	c, err := mgrpc.New(ctx, d.uri, mgrpc.UseHTTPPost())
 	if err != nil {
 		return nil, fmt.Errorf("establishing rpc channel: %w", err)
 	}
@@ -44,4 +52,11 @@ func (d *Device) resolveSpecs(ctx context.Context) error {
 	}
 	d.MACAddr = resp.MAC
 	return nil
+}
+
+func (d *Device) Instance() string {
+	if d.ble != nil {
+		return (&url.URL{Scheme: "ble", Host: d.MACAddr}).String()
+	}
+	return d.uri
 }

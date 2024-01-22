@@ -64,7 +64,7 @@ func (td *TestDiscoverer) NewTestDevice(t *testing.T, add bool) *TestDevice {
 	u, err := url.Parse(d.s.URL)
 	require.NoError(t, err)
 	u.Path = "/rpc"
-	d.URI = u.String()
+	d.uri = u.String()
 	t.Cleanup(d.Shutdown)
 	if add {
 		td.knownDevices[d.MACAddr] = d.Device

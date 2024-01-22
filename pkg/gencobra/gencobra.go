@@ -58,7 +58,7 @@ func RequestToCmd(req shelly.RPCRequestBody, baggage *Baggage) (*cobra.Command, 
 		}
 
 		for _, d := range baggage.Discoverer.AllDevices() {
-			ll := ll.With().Str("instance", d.URI).Logger()
+			ll := ll.With().Str("instance", d.Instance()).Logger()
 			conn, err := d.Open(ctx)
 			if err != nil {
 				return err
