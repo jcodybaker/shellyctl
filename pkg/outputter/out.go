@@ -35,7 +35,15 @@ func Log(ctx context.Context, msg, field string, f any) error {
 
 // Text encodes the data as a structured log.
 func Text(ctx context.Context, msg, field string, f any) error {
-	fmt.Printf("%s:\n", msg)
+	fmt.Printf("%s:", msg)
+	v := reflect.ValueOf(f)
+	if (v.Kind() == reflect.Struct && v.NumField() == 0) ||
+		(v.Kind() == reflect.Pointer && v.Elem().Kind() == reflect.Struct && v.Elem().NumField() == 0) {
+		fmt.Println(" success")
+		fmt.Println("")
+		return nil
+	}
+	fmt.Println("")
 	text(reflect.ValueOf(f), "  ", "  ")
 	fmt.Println("")
 	return nil
