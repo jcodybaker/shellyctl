@@ -53,7 +53,7 @@ func RequestToCmd(req shelly.RPCRequestBody, baggage *Baggage) (*cobra.Command, 
 			return err
 		}
 
-		if _, err := baggage.Discoverer.MDNSSearch(ctx); err != nil {
+		if _, err := baggage.Discoverer.Search(ctx); err != nil {
 			return err
 		}
 
@@ -186,6 +186,14 @@ func newFlagReader(f *pflag.FlagSet, method string) fieldFunc {
 				var b bool
 				b, err = f.GetBool(flagName)
 				fieldValue.Set(reflect.ValueOf(&b))
+			case reflect.TypeOf(float64(0)):
+				var i float64
+				i, err = f.GetFloat64(flagName)
+				fieldValue.SetFloat(float64(i))
+			case reflect.TypeOf((*float64)(nil)):
+				var i float64
+				i, err = f.GetFloat64(flagName)
+				fieldValue.Set(reflect.ValueOf(&i))
 			case reflect.TypeOf(int(0)):
 				var i int
 				i, err = f.GetInt(flagName)

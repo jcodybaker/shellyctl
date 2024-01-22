@@ -68,7 +68,7 @@ func TestDiscovererMDNSSearch(t *testing.T) {
 	d := NewDiscoverer(
 		func(d *Discoverer) { d.mdnsQueryFunc = queryFunc },
 	)
-	devs, err := d.MDNSSearch(ctx)
+	devs, err := d.SearchMDNS(ctx)
 	require.NoError(t, err)
 	assert.Len(t, devs, 1)
 }

@@ -11,12 +11,13 @@ import (
 type options struct {
 	bleAdapter       *bluetooth.Adapter
 	enableBLEAdapter func() error
+	bleSearchEnabled bool
 	now              func() time.Time
 
-	mdnsInterface *net.Interface
-	mdnsZone      string
-	mdnsService   string
-	mdnsEnabled   bool
+	mdnsInterface     *net.Interface
+	mdnsZone          string
+	mdnsService       string
+	mdnsSearchEnabled bool
 
 	searchTimeout time.Duration
 	concurrency   int
@@ -87,7 +88,7 @@ func WithDeviceTTL(ttl time.Duration) DiscovererOption {
 // WithMDNSSearchEnabled allows enabling or disabling mDNS discovery.
 func WithMDNSSearchEnabled(enabled bool) DiscovererOption {
 	return func(d *Discoverer) {
-		d.mdnsEnabled = enabled
+		d.mdnsSearchEnabled = enabled
 	}
 }
 

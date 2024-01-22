@@ -11,6 +11,7 @@ import (
 
 	"github.com/hashicorp/mdns"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
 	"tinygo.org/x/bluetooth"
 )
 
@@ -124,4 +125,32 @@ func (d *Discoverer) AllDevices() []*Device {
 		out = append(out, dev)
 	}
 	return out
+}
+
+func (d *Discoverer) Search(ctx context.Context) ([]*Device, error) {
+	if !d.bleSearchEnabled && !d.mdnsSearchEnabled {
+		return nil, nil
+	}
+	var l sync.Mutex
+	var allDevs []*Device
+	eg, ctx := errgroup.WithContext(ctx)
+	if d.bleSearchEnabled {
+		eg.Go(func() error {
+			devs, err := d.SearchBLE(ctx)
+			l.Lock()
+			defer l.Unlock()
+			allDevs = append(allDevs, devs...)
+			return err
+		})
+	}
+	if d.mdnsSearchEnabled {
+		eg.Go(func() error {
+			devs, err := d.SearchMDNS(ctx)
+			l.Lock()
+			defer l.Unlock()
+			allDevs = append(allDevs, devs...)
+			return err
+		})
+	}
+	return allDevs, eg.Wait()
 }

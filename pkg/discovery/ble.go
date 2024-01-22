@@ -56,9 +56,9 @@ func init() {
 	bleMGRPCID = initialID.Int64()
 }
 
-func (d *Discoverer) SearchBLE(ctx context.Context) error {
+func (d *Discoverer) SearchBLE(ctx context.Context) ([]*Device, error) {
 	if err := d.enableBLEAdapter(); err != nil {
-		return err
+		return nil, err
 	}
 	var wg sync.WaitGroup
 	defer wg.Wait()
@@ -74,16 +74,23 @@ func (d *Discoverer) SearchBLE(ctx context.Context) error {
 			ll.Err(err).Msg("stopping BLE scan")
 		}
 	}()
+	var devices []*Device
 	err := d.bleAdapter.Scan(func(a *bluetooth.Adapter, sr bluetooth.ScanResult) {
-		if sr.Address.String() != "D4:D4:DA:09:2E:B6" {
+		ll := ll.With().
+			Str("ble_address", sr.Address.String()).
+			Str("ble_local_name", sr.LocalName()).Logger()
+		if !sr.AdvertisementPayload.HasServiceUUID(mongooseGATTServiceID) {
+			ll.Debug().Msg("found non-shelly device")
 			return
 		}
-		ll.Info().
-			Str("ble_address", sr.Address.String()).
-			Str("ble_local_name", sr.LocalName()).
-			Msg("found device")
+		ll.Info().Msg("found device")
+		dev, err := d.AddBLE(ctx, sr.Address.String())
+		if err != nil {
+			ll.Err(err).Msg("adding BLE device")
+		}
+		devices = append(devices, dev)
 	})
-	return err
+	return devices, err
 }
 
 func (d *Discoverer) AddBLE(ctx context.Context, mac string) (*Device, error) {
@@ -269,9 +276,6 @@ func (b *BLEDevice) Call(
 		return nil, fmt.Errorf("parsing response message: %w", err)
 	}
 	resp := frame.NewResponseFromFrame(respFrame)
-	if resp.ID != reqFrame.ID {
-		return nil, fmt.Errorf("response id %d did not match request %d", resp.ID, reqFrame.ID)
-	}
 	return resp, nil
 }
 
