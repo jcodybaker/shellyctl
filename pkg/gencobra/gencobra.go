@@ -186,6 +186,14 @@ func newFlagReader(f *pflag.FlagSet, method string) fieldFunc {
 				var b bool
 				b, err = f.GetBool(flagName)
 				fieldValue.Set(reflect.ValueOf(&b))
+			case reflect.TypeOf(float32(0)):
+				var i float32
+				i, err = f.GetFloat32(flagName)
+				fieldValue.SetFloat(float64(i))
+			case reflect.TypeOf((*float32)(nil)):
+				var i float32
+				i, err = f.GetFloat32(flagName)
+				fieldValue.Set(reflect.ValueOf(&i))
 			case reflect.TypeOf(float64(0)):
 				var i float64
 				i, err = f.GetFloat64(flagName)
