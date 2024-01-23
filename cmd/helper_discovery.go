@@ -135,6 +135,7 @@ func discoveryOptionsFromFlags() (opts []discovery.DiscovererOption, err error) 
 		discovery.WithConcurrency(discoveryConcurrency),
 		discovery.WithDeviceTTL(discoveryDeviceTTL),
 		discovery.WithMDNSSearchEnabled(mdnsSearch),
+		discovery.WithBLESearchEnabled(bleSearch),
 	)
 	return opts, err
 }

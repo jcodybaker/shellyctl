@@ -21,6 +21,10 @@ import (
 	"tinygo.org/x/bluetooth"
 )
 
+const (
+	AlltercoRoboticsLTDCompanyID uint16 = 2985
+)
+
 var (
 	// https://github.com/mongoose-os-libs/rpc-gatts
 	mongooseGATTServiceID        bluetooth.UUID
@@ -62,9 +66,11 @@ func (d *Discoverer) SearchBLE(ctx context.Context) ([]*Device, error) {
 	}
 	var wg sync.WaitGroup
 	defer wg.Wait()
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithTimeout(ctx, d.searchTimeout)
 	defer cancel()
 	ll := log.Ctx(ctx).With().Str("component", "discovery").Str("subcomponent", "ble").Logger()
+
+	seen := make(map[bluetooth.MAC]bool)
 
 	wg.Add(1)
 	go func() {
@@ -73,23 +79,65 @@ func (d *Discoverer) SearchBLE(ctx context.Context) ([]*Device, error) {
 		if err := d.bleAdapter.StopScan(); err != nil {
 			ll.Err(err).Msg("stopping BLE scan")
 		}
+		ll.Debug().Msg("stopping BLE scan")
 	}()
 	var devices []*Device
+	ll.Debug().Msg("starting BLE scan")
 	err := d.bleAdapter.Scan(func(a *bluetooth.Adapter, sr bluetooth.ScanResult) {
+		var manufacturers []uint16
+		for id := range sr.ManufacturerData() {
+			manufacturers = append(manufacturers, id)
+		}
 		ll := ll.With().
 			Str("ble_address", sr.Address.String()).
+			Uints16("manufactures", manufacturers).
 			Str("ble_local_name", sr.LocalName()).Logger()
-		if !sr.AdvertisementPayload.HasServiceUUID(mongooseGATTServiceID) {
-			ll.Debug().Msg("found non-shelly device")
+		wasShelly, wasSeen := seen[sr.Address.MAC]
+		if wasShelly {
+			return // We've already seen this device with Shelly services.
+		}
+		if _, ok := sr.ManufacturerData()[AlltercoRoboticsLTDCompanyID]; !ok {
+			if !wasSeen {
+				ll.Debug().Msg("found non-shelly device")
+				seen[sr.Address.MAC] = false
+			}
 			return
 		}
-		ll.Info().Msg("found device")
-		dev, err := d.AddBLE(ctx, sr.Address.String())
-		if err != nil {
-			ll.Err(err).Msg("adding BLE device")
+
+		d.lock.Lock()
+		_, existsInDiscoverer := d.knownDevices[strings.ToUpper(sr.Address.MAC.String())]
+		d.lock.Unlock()
+		if existsInDiscoverer {
+			seen[sr.Address.MAC] = true
+			return
 		}
+
+		// Ok new device.  For linux bluez will only let us connect during the scan.
+		// Since we're already scanning, lets connect and open the connection. The channel will
+		// be reused.
+		bDevice, err := d.bleAdapter.Connect(sr.Address, bluetooth.ConnectionParams{})
+		if err != nil {
+			ll.Warn().Err(err).Msg("found device, but failed to connect")
+			return
+		}
+		dev := &Device{
+			MACAddr: strings.ToUpper(sr.Address.MAC.String()),
+			ble: &BLEDevice{
+				options: d.options,
+				device:  bDevice,
+			},
+		}
+		if _, err := dev.Open(ctx); err != nil {
+			ll.Warn().Err(err).Msg("found device, but open failed")
+			return
+		}
+
+		ll.Info().Msg("found device")
+		dev = d.addDevice(dev)
 		devices = append(devices, dev)
+		seen[sr.Address.MAC] = true
 	})
+	<-ctx.Done()
 	return devices, err
 }
 
@@ -100,31 +148,45 @@ func (d *Discoverer) AddBLE(ctx context.Context, mac string) (*Device, error) {
 	return d.addDevice(&Device{
 		MACAddr: mac,
 		ble: &BLEDevice{
-			bleAdapter: d.bleAdapter,
+			options: d.options,
 		},
 	}), nil
 }
 
 type BLEDevice struct {
-	lock       sync.Mutex
-	bleAdapter *bluetooth.Adapter
-	device     *bluetooth.Device
-	service    bluetooth.DeviceService
-	frameChar  bluetooth.DeviceCharacteristic
-	txChar     bluetooth.DeviceCharacteristic
-	rxChar     bluetooth.DeviceCharacteristic
+	*options
+	lock sync.Mutex
+
+	device    *bluetooth.Device
+	service   bluetooth.DeviceService
+	frameChar bluetooth.DeviceCharacteristic
+	txChar    bluetooth.DeviceCharacteristic
+	rxChar    bluetooth.DeviceCharacteristic
 }
 
 var _ mgrpc.MgRPC = &BLEDevice{}
 
 func (b *BLEDevice) open(ctx context.Context, mac string) error {
 	ll := log.Ctx(ctx).With().Str("component", "discovery").Str("subcomponent", "ble").Logger()
-	device, err := b.searchForBLEDevice(ctx, mac, 30*time.Second)
-	if err != nil {
-		return fmt.Errorf("connecting to BLE device: %w", err)
+	if b.IsConnected() {
+		ll.Debug().Msg("already connecting, short-circuit opening BLE device")
+		return nil
 	}
-	if device == nil {
-		return errors.New("failed to find device")
+	b.lock.Lock()
+	device := b.device
+	b.lock.Unlock()
+	if b.device == nil {
+		var err error
+		device, err = b.searchForBLEDevice(ctx, mac, b.searchTimeout)
+		if err != nil {
+			return fmt.Errorf("connecting to BLE device: %w", err)
+		}
+		if device == nil {
+			return errors.New("failed to find device")
+		}
+		b.lock.Lock()
+		b.device = device
+		b.lock.Unlock()
 	}
 	services, err := device.DiscoverServices([]bluetooth.UUID{mongooseGATTServiceID})
 	if err != nil {
@@ -133,15 +195,15 @@ func (b *BLEDevice) open(ctx context.Context, mac string) error {
 	if len(services) == 0 {
 		return errors.New("device is BLE RPC service")
 	}
-	b.lock.Lock()
-	defer b.lock.Unlock()
-	b.service = services[0]
 
-	ll.Debug().Str("service", b.service.String()).Msg("found service")
-	chars, err := b.service.DiscoverCharacteristics(nil)
+	ll.Debug().Str("service", services[0].String()).Msg("found service")
+	chars, err := services[0].DiscoverCharacteristics(nil)
 	if err != nil {
 		return fmt.Errorf("reading characteristics: %w", err)
 	}
+	b.lock.Lock()
+	defer b.lock.Unlock()
+	b.service = services[0]
 
 	for _, c := range chars {
 		ll.Debug().Str("service", b.service.String()).
@@ -193,7 +255,7 @@ func (b *BLEDevice) searchForBLEDevice(ctx context.Context, mac string, timeout 
 		ll.Info().
 			Str("ble_address", sr.Address.String()).
 			Str("ble_local_name", sr.LocalName()).
-			Msg("found device")
+			Msg("found device for open")
 		var err error
 		device, err = b.bleAdapter.Connect(sr.Address, bluetooth.ConnectionParams{})
 		if err != nil {
@@ -230,6 +292,11 @@ func (b *BLEDevice) Call(
 	if err != nil {
 		return nil, fmt.Errorf("enabling notifications: %w", err)
 	}
+	defer func() {
+		if err := b.rxChar.EnableNotifications(nil); err != nil {
+			ll.Warn().Err(err).Msg("failed to clear notifications on BLE")
+		}
+	}()
 	ll.Debug().Str("characteristic", b.txChar.String()).Msg("sent tx length")
 	if _, err := b.frameChar.WriteWithoutResponse(reqFrameBytes); err != nil {
 		return nil, fmt.Errorf("writing frame: %w", err)
@@ -296,7 +363,19 @@ func (b *BLEDevice) Disconnect(ctx context.Context) error {
 func (b *BLEDevice) IsConnected() bool {
 	b.lock.Lock()
 	defer b.lock.Unlock()
-	return b.device != nil
+	if b.device == nil {
+		return false
+	}
+	if b.frameChar.UUID() == (bluetooth.UUID{}) {
+		return false
+	}
+	if b.txChar.UUID() == (bluetooth.UUID{}) {
+		return false
+	}
+	if b.rxChar.UUID() == (bluetooth.UUID{}) {
+		return false
+	}
+	return true
 }
 
 func (b *BLEDevice) SetCodecOptions(opts *codec.Options) error {

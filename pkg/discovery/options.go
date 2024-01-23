@@ -99,4 +99,11 @@ func WithBLEAdapter(ble *bluetooth.Adapter) DiscovererOption {
 	}
 }
 
+// WithMDNSSearchEnabled allows enabling or disabling BLE discovery.
+func WithBLESearchEnabled(enabled bool) DiscovererOption {
+	return func(d *Discoverer) {
+		d.bleSearchEnabled = enabled
+	}
+}
+
 type DeviceOption func(*Device)
