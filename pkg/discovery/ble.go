@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -60,30 +61,108 @@ func init() {
 	bleMGRPCID = initialID.Int64()
 }
 
-func (d *Discoverer) SearchBLE(ctx context.Context) ([]*Device, error) {
+func (d *Discoverer) searchBLE(ctx context.Context, stop chan struct{}) ([]*Device, error) {
+	ll := log.Ctx(ctx).With().Str("component", "discovery").Str("subcomponent", "ble").Logger()
 	if err := d.enableBLEAdapter(); err != nil {
 		return nil, err
 	}
 	var wg sync.WaitGroup
 	defer wg.Wait()
-	ctx, cancel := context.WithTimeout(ctx, d.searchTimeout)
-	defer cancel()
-	ll := log.Ctx(ctx).With().Str("component", "discovery").Str("subcomponent", "ble").Logger()
 
 	seen := make(map[bluetooth.MAC]bool)
+	approver := newApprover[*bluetooth.ScanResult](d, stop)
+	defer approver.done()
+	var devices []*Device
 
+	// On Linux, bluez only allows us to connect while the discovery is ongoing. To facilitate the
+	// confirmation workflow, we need to leave the underlying search open longer than searchTimeout.
+	// We'll reject new discoveries after searchTimeout has expired, but may process devices
+	// discovered before the timeout, but confirmed after the timeout. This also creates an annoying
+	// race between shutting down the discovery and ensuring that all events have been fully
+	// processed (received, confirmed, connected, and opened). To mitigate this, we only stop discovery
+	// AFTER all events have been processed, but coordinate the discarding of entries after timeout
+	// and the closing of the input channel via a lock.
+	wg.Add(1)
+	var shutdownLock sync.Mutex
+	var shutdown bool
+	go func() {
+		defer wg.Done()
+		shutdownTimer := time.NewTimer(d.searchTimeout)
+		select {
+		case <-shutdownTimer.C:
+		case <-stop:
+		case <-ctx.Done():
+		}
+		shutdownLock.Lock()
+		defer shutdownLock.Unlock()
+		shutdown = true
+		approver.done()
+	}()
+
+	// Handle approved devices.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		<-ctx.Done()
+		for {
+			scanResult := approver.getApproved(ctx)
+			if scanResult == nil {
+				break // nil indicates the search is done.
+			}
+			macStr := strings.ToUpper(scanResult.Address.String())
+			dev := &Device{
+				Name:    scanResult.LocalName(),
+				MACAddr: macStr,
+				uri:     (&url.URL{Scheme: "ble", Host: macStr}).String(),
+			}
+			ll := dev.LogCtx(ctx)
+
+			ll.Debug().Msg("connecting to BLE device")
+			bDevice, err := d.bleAdapter.Connect(scanResult.Address, bluetooth.ConnectionParams{})
+			if err != nil {
+				ll.Warn().Err(err).Msg("found device, but failed to connect")
+				return
+			}
+			dev.ble = &BLEDevice{
+				options: d.options,
+				device:  bDevice,
+			}
+
+			if _, err := dev.Open(ctx); err != nil {
+				ll.Warn().Err(err).Msg("found device, but open failed")
+				return
+			}
+
+			_, isNew := d.addDevice(ctx, dev)
+			if isNew {
+				devices = append(devices, dev)
+			}
+		}
+		ll.Debug().Msg("stopping BLE scan")
 		if err := d.bleAdapter.StopScan(); err != nil {
 			ll.Err(err).Msg("stopping BLE scan")
 		}
-		ll.Debug().Msg("stopping BLE scan")
+		ll.Debug().Msg("stopped BLE scan")
 	}()
-	var devices []*Device
+
+	// Display the confirmation dialogues if necessary, then pass devices to the approved queue.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := approver.run(ctx); err != nil {
+			ll.Err(err).Msg("confirming devices")
+		}
+	}()
+
 	ll.Debug().Msg("starting BLE scan")
+	// Scan blocks until it's shutdown. We ensure its shutdown only happens after
 	err := d.bleAdapter.Scan(func(a *bluetooth.Adapter, sr bluetooth.ScanResult) {
+		shutdownLock.Lock()
+		defer shutdownLock.Unlock()
+		if shutdown {
+			// The BLE scanner is still running so we can process devices we've already
+			// discovered, but we're not accepting any further devices.
+			return
+		}
 		var manufacturers []uint16
 		for id := range sr.ManufacturerData() {
 			manufacturers = append(manufacturers, id)
@@ -94,50 +173,29 @@ func (d *Discoverer) SearchBLE(ctx context.Context) ([]*Device, error) {
 			Str("ble_local_name", sr.LocalName()).Logger()
 		wasShelly, wasSeen := seen[sr.Address.MAC]
 		if wasShelly {
-			return // We've already seen this device with Shelly services.
+			// We've already seen this device with Shelly services. It may be approved, queued for
+			// approval, or rejected. Regardless, it's not interesting to us any longer. We only
+			// short-circuit here for known shelly devices.
+			return
 		}
 		if _, ok := sr.ManufacturerData()[AlltercoRoboticsLTDCompanyID]; !ok {
 			if !wasSeen {
+				// wasSeen ensures we don't log this device many times.
 				ll.Debug().Msg("found non-shelly device")
 				seen[sr.Address.MAC] = false
 			}
 			return
 		}
 
-		d.lock.Lock()
-		_, existsInDiscoverer := d.knownDevices[strings.ToUpper(sr.Address.MAC.String())]
-		d.lock.Unlock()
-		if existsInDiscoverer {
-			seen[sr.Address.MAC] = true
+		// This might have already been added to the discoverer in past searched or via other methods.
+		if d.isKnownDevice(sr.Address.MAC.String()) {
 			return
 		}
-
-		// Ok new device.  For linux bluez will only let us connect during the scan.
-		// Since we're already scanning, lets connect and open the connection. The channel will
-		// be reused.
-		bDevice, err := d.bleAdapter.Connect(sr.Address, bluetooth.ConnectionParams{})
-		if err != nil {
-			ll.Warn().Err(err).Msg("found device, but failed to connect")
-			return
-		}
-		dev := &Device{
-			MACAddr: strings.ToUpper(sr.Address.MAC.String()),
-			ble: &BLEDevice{
-				options: d.options,
-				device:  bDevice,
-			},
-		}
-		if _, err := dev.Open(ctx); err != nil {
-			ll.Warn().Err(err).Msg("found device, but open failed")
-			return
-		}
-
-		ll.Info().Msg("found device")
-		dev = d.addDevice(dev)
-		devices = append(devices, dev)
+		approver.submit(ctx, &sr, fmt.Sprintf("BLE device %q (%s)", sr.LocalName(), sr.Address.String()))
+		// This is a shelly device and we're about to give it all of the consideration it deserves.
 		seen[sr.Address.MAC] = true
 	})
-	<-ctx.Done()
+
 	return devices, err
 }
 
@@ -145,12 +203,15 @@ func (d *Discoverer) AddBLE(ctx context.Context, mac string) (*Device, error) {
 	if err := d.enableBLEAdapter(); err != nil {
 		return nil, err
 	}
-	return d.addDevice(&Device{
-		MACAddr: mac,
+	macStr := strings.ToUpper(mac)
+	dev, _ := d.addDevice(ctx, &Device{
+		MACAddr: macStr,
+		uri:     (&url.URL{Scheme: "ble", Host: macStr}).String(),
 		ble: &BLEDevice{
 			options: d.options,
 		},
-	}), nil
+	})
+	return dev, nil
 }
 
 type BLEDevice struct {
@@ -167,7 +228,8 @@ type BLEDevice struct {
 var _ mgrpc.MgRPC = &BLEDevice{}
 
 func (b *BLEDevice) open(ctx context.Context, mac string) error {
-	ll := log.Ctx(ctx).With().Str("component", "discovery").Str("subcomponent", "ble").Logger()
+	ll := log.Ctx(ctx).With().
+		Str("channel_protocol", "ble").Logger()
 	if b.IsConnected() {
 		ll.Debug().Msg("already connecting, short-circuit opening BLE device")
 		return nil
@@ -229,6 +291,7 @@ func (b *BLEDevice) open(ctx context.Context, mac string) error {
 	if b.rxChar.UUID() == (bluetooth.UUID{}) {
 		return errors.New("BLE RPC service is missing rx characteristic")
 	}
+	ll.Info().Msg("connected to device")
 	return nil
 }
 
@@ -337,7 +400,7 @@ func (b *BLEDevice) Call(
 		readBytes += n
 		ll.Debug().Str("resp", string(respBuf[0:readBytes])).Msg("got partial message")
 	}
-	ll.Info().Str("resp", string(respBuf)).Msg("message is complete")
+	ll.Debug().Str("resp", string(respBuf)).Msg("ble response frame is complete")
 	respFrame := &frame.Frame{}
 	if err = json.Unmarshal(respBuf, &respFrame); err != nil {
 		return nil, fmt.Errorf("parsing response message: %w", err)

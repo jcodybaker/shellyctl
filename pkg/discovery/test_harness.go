@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -67,7 +68,7 @@ func (td *TestDiscoverer) NewTestDevice(t *testing.T, add bool) *TestDevice {
 	d.uri = u.String()
 	t.Cleanup(d.Shutdown)
 	if add {
-		td.knownDevices[d.MACAddr] = d.Device
+		td.knownDevices[strings.ToUpper(d.MACAddr)] = d.Device
 	}
 	return d
 }

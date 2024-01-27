@@ -49,21 +49,17 @@ func RequestToCmd(req shelly.RPCRequestBody, baggage *Baggage) (*cobra.Command, 
 			return err
 		}
 
-		if err := outputter.Log(ctx, fmt.Sprintf("Sending %q request", req.Method()), "request", req); err != nil {
-			return err
-		}
-
 		if _, err := baggage.Discoverer.Search(ctx); err != nil {
 			return err
 		}
 
 		for _, d := range baggage.Discoverer.AllDevices() {
-			ll := ll.With().Str("instance", d.Instance()).Logger()
+			ll := d.Log(ll)
+			ll.Info().Any("request_body", req).Str("method", req.Method()).Msg("sending request")
 			conn, err := d.Open(ctx)
 			if err != nil {
 				return err
 			}
-			ll.Info().Msg("connected to device")
 			defer func() {
 				if err := conn.Disconnect(ctx); err != nil {
 					ll.Warn().Err(err).Msg("disconnecting from device")
@@ -76,7 +72,7 @@ func RequestToCmd(req shelly.RPCRequestBody, baggage *Baggage) (*cobra.Command, 
 			}
 			baggage.Output(
 				ctx,
-				fmt.Sprintf("Response to %s command", req.Method()),
+				fmt.Sprintf("Response to %s command for %s", req.Method(), d.BestName()),
 				"response",
 				resp,
 			)

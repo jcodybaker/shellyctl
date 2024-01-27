@@ -256,8 +256,8 @@ func (s *Server) Describe(ch chan<- *prometheus.Desc) {
 // Collect implements prometheus.Collector.
 func (s *Server) Collect(ch chan<- prometheus.Metric) {
 	l := log.Ctx(s.ctx)
-	if _, err := s.discoverer.SearchMDNS(s.ctx); err != nil {
-		l.Err(err).Msg("finding new mdns devices")
+	if _, err := s.discoverer.Search(s.ctx); err != nil {
+		l.Err(err).Msg("finding new devices")
 	}
 	var wg sync.WaitGroup
 	defer wg.Wait()

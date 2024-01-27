@@ -10,15 +10,15 @@ import (
 	"sync"
 
 	"github.com/hashicorp/mdns"
-	"github.com/rs/zerolog/log"
 )
 
 const (
 	mdnsSearchBuffer = 50
 )
 
-// SearchMDNS finds new devices via mDNS.
-func (d *Discoverer) SearchMDNS(ctx context.Context) ([]*Device, error) {
+// searchMDNS finds new devices via mDNS.
+func (d *Discoverer) searchMDNS(ctx context.Context, stop chan struct{}) ([]*Device, error) {
+	ll := d.logCtx(ctx, "mdns")
 	if !d.mdnsSearchEnabled {
 		return nil, nil
 	}
@@ -40,6 +40,10 @@ func (d *Discoverer) SearchMDNS(ctx context.Context) ([]*Device, error) {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
+
+	approver := newApprover[*mdns.ServiceEntry](d, stop)
+	defer approver.done()
+
 	workerLimiter := make(chan struct{}, d.concurrency)
 	defer close(workerLimiter)
 	var outputLock sync.Mutex
@@ -47,8 +51,33 @@ func (d *Discoverer) SearchMDNS(ctx context.Context) ([]*Device, error) {
 
 	go func() {
 		defer wg.Done()
+		defer approver.done()
 		for se := range c {
-			se := se
+			desc := fmt.Sprintf(
+				"mDNS device %q (%s)",
+				d.mdnsSEName(se),
+				d.mdnsSEAddr(se).String())
+			approver.submit(ctx, se, desc)
+		}
+	}()
+
+	// Display the confirmation dialogues if necessary, then pass devices to the approved queue.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := approver.run(ctx); err != nil {
+			ll.Err(err).Msg("confirming devices")
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			se := approver.getApproved(ctx)
+			if se == nil {
+				return
+			}
 			wg.Add(1)
 			// Occupy a space in the workerLimiter buffer or block until one is available.
 			workerLimiter <- struct{}{}
@@ -78,25 +107,33 @@ func sourceIsMDNS(dev *Device) {
 	dev.source = sourceMDNS
 }
 
+func (d *Discoverer) mdnsSEAddr(se *mdns.ServiceEntry) net.IP {
+	if d.preferIPVersion != "6" && !se.AddrV4.IsUnspecified() {
+		return se.AddrV4
+	} else if d.preferIPVersion != "4" && !se.AddrV6.IsUnspecified() {
+		return se.AddrV6
+	}
+	return nil
+}
+
+func (d *Discoverer) mdnsSEName(se *mdns.ServiceEntry) string {
+	return strings.TrimSuffix(se.Host, "."+d.mdnsZone+".")
+}
+
 func (d *Discoverer) processMDNSServiceEntry(ctx context.Context, se *mdns.ServiceEntry) *Device {
-	l := log.Ctx(ctx).With().
-		Str("component", "discovery").
+	ll := d.logCtx(ctx, "mdns").With().
 		Str("mdns_name", se.Name).
 		Str("mdns_host", se.Host).
 		Logger()
-	var addr net.IP
-	if d.preferIPVersion != "6" && !se.AddrV4.IsUnspecified() {
-		addr = se.AddrV4
-	} else if d.preferIPVersion != "4" && !se.AddrV6.IsUnspecified() {
-		addr = se.AddrV6
-	} else {
-		l.Warn().
+	addr := d.mdnsSEAddr(se)
+	if addr == nil {
+		ll.Warn().
 			IPAddr("addr_v4", se.AddrV4).
 			IPAddr("addr_v6", se.AddrV6).
 			Msg("mDNS advertisement with unknown or missing ")
 		return nil
 	}
-	l = l.With().IPAddr("mdns_addr", addr).Logger()
+	ll = ll.With().IPAddr("mdns_addr", addr).Logger()
 	var genFound bool
 	for _, f := range se.InfoFields {
 		k, v, ok := strings.Cut(f, "=")
@@ -104,13 +141,16 @@ func (d *Discoverer) processMDNSServiceEntry(ctx context.Context, se *mdns.Servi
 			continue
 		}
 		genFound = true
-		if v != "2" {
-			l.Warn().Str("gen", v).Msg("unsupport device `gen`")
+		switch v {
+		case "2", "3":
+			// ok
+		default:
+			ll.Warn().Str("gen", v).Msg("unsupport device `gen`")
 			return nil
 		}
 	}
 	if !genFound {
-		l.Warn().Msg("mdns record missing `gen` field; skipping")
+		ll.Warn().Msg("mdns record missing `gen` field; skipping")
 		return nil
 	}
 	u := url.URL{
@@ -118,9 +158,9 @@ func (d *Discoverer) processMDNSServiceEntry(ctx context.Context, se *mdns.Servi
 		Path:   "/rpc",
 		Host:   net.JoinHostPort(addr.String(), strconv.Itoa(se.Port)),
 	}
-	dev, err := d.AddDeviceByAddress(ctx, u.String(), sourceIsMDNS)
+	dev, err := d.AddDeviceByAddress(ctx, u.String(), sourceIsMDNS, WithDeviceName(d.mdnsSEName(se)))
 	if err != nil {
-		l.Err(err).Msg("adding device")
+		ll.Err(err).Msg("adding device")
 		return nil
 	}
 	return dev

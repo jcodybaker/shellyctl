@@ -20,6 +20,7 @@ type options struct {
 	mdnsSearchEnabled bool
 
 	searchTimeout time.Duration
+	searchConfirm SearchConfirm
 	concurrency   int
 
 	// deviceTTL is relevant for long-lived commands (like prometheus metrics server) when
@@ -103,6 +104,13 @@ func WithBLEAdapter(ble *bluetooth.Adapter) DiscovererOption {
 func WithBLESearchEnabled(enabled bool) DiscovererOption {
 	return func(d *Discoverer) {
 		d.bleSearchEnabled = enabled
+	}
+}
+
+// WithSearchConfirm sets a callback to confirm search results.
+func WithSearchConfirm(confirm SearchConfirm) DiscovererOption {
+	return func(d *Discoverer) {
+		d.searchConfirm = confirm
 	}
 }
 

@@ -83,14 +83,14 @@ Global Flags:
 
 #### Example
 ```
-$ shellyctl switch set-config --ble-device=D4:D4:DA:09:2E:B6 --auto-off=true --auto-off-delay=60
+$ shellyctl switch set-config --ble-device=AA:BB:CC:DD:EE:FF --auto-off=true --auto-off-delay=60
 
-Response to Switch.SetConfig command:
+Response to Switch.SetConfig command for ShellyPlugUS-AABBCCDDEEFF:
   Restart Required: false
 
-$ shellyctl switch set --ble-device=D4:D4:DA:09:2E:B6 --on=true
+$ shellyctl switch set --ble-device=AA:BB:CC:DD:EE:FF --on=true
 
-Response to Switch.Set command:
+Response to Switch.Set command for ShellyPlugUS-AABBCCDDEEFF:
   Was On: true
 ```
 
@@ -156,19 +156,27 @@ Response to Switch.Set command:
 ### Device Initial Setup
 By default Shelly devices can be configured with RPCs over Bluetooth Low Energy (BLE) channel. The initial configuration is therefore just a matter of configuring network connectivity, optionally disabling BLE, and optionally setting authentication.
 ```
-$ shellyctl wifi set-config --sta-enable=true --sta-ssid=INTERNET --sta-pass=password --ble-device=AA:BB:CC:DD:EE:FF
+$ shellyctl wifi set-config --sta-enable=true --sta-ssid=INTERNET --sta-pass=password --ble-search
 
-Response to Wifi.SetConfig command:
+Found device BLE device "ShellyPlugUS-AABBCCDDEEFF" (AA:BB:CC:DD:EE:FF)
+y - Add device and continue search
+n - Skip this device and continue search
+u - Use this device and stop searching for additional devices
+a - Abort search without this device
+q - Quit without acting on this device or any others
+Use this device [y,n,u,a,q]?
+y
+Response to Wifi.SetConfig command for ShellyPlugUS-AABBCCDDEEFF:
   Restart Required: false
 
 $ shellyctl ble set-config --enable=false --host=192.168.1.62
 
-Response to BLE.SetConfig command:
+Response to BLE.SetConfig command for ShellyPlugUS-AABBCCDDEEFF:
   Restart Required: true
 
 $ shellyctl shelly reboot --host=192.168.1.62
 
-Response to Shelly.Reboot command:
+Response to Shelly.Reboot command for ShellyPlugUS-AABBCCDDEEFF:
 ```
 
 ## TODO

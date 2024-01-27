@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -25,6 +27,8 @@ var (
 	searchTimeout        time.Duration
 	discoveryConcurrency int
 	skipFailedHosts      bool
+
+	searchInteractive bool
 
 	preferIPVersion string
 )
@@ -79,6 +83,13 @@ func discoveryFlags(f *pflag.FlagSet, withTTL bool) {
 		"timeout for devices to respond to the mDNS discovery query.",
 	)
 
+	f.BoolVar(
+		&searchInteractive,
+		"search-interactive",
+		true,
+		"if true (default) confirm devices discovered in search before proceeding with commands.",
+	)
+
 	f.IntVar(
 		&discoveryConcurrency,
 		"discovery-concurrency",
@@ -127,6 +138,9 @@ func discoveryOptionsFromFlags() (opts []discovery.DiscovererOption, err error) 
 		opts = append(opts, discovery.WithIPVersion(preferIPVersion))
 	default:
 		return nil, errors.New("invalid value for --prefer-ip-version; must be `4` or `6`")
+	}
+	if searchInteractive {
+		opts = append(opts, discovery.WithSearchConfirm(searchConfirm))
 	}
 	opts = append(opts,
 		discovery.WithMDNSZone(mdnsZone),
@@ -202,4 +216,43 @@ func discoveryAddBLEDevices(ctx context.Context, d *discovery.Discoverer) error 
 		l.Warn().Err(err).Msg("adding device; continuing because `skip-failed-hosts=true`")
 	}
 	return nil
+}
+
+func searchConfirm(desc string) (approveDevice bool, continueSearch bool, err error) {
+	for {
+		fmt.Printf("\nFound device %s\n", desc)
+		fmt.Println("y - Add device and continue search")
+		fmt.Println("n - Skip this device and continue search")
+		fmt.Println("u - Use this device and stop searching for additional devices")
+		fmt.Println("a - Abort search without this device")
+		fmt.Println("q - Quit without acting on this device or any others")
+		fmt.Println("Use this device [y,n,u,a,q]?")
+		for {
+			in := []byte{0}
+			if _, err := os.Stdin.Read(in); err != nil {
+				if errors.Is(err, io.EOF) {
+					return false, false, nil
+				}
+				return false, false, fmt.Errorf("reading prompt response: %w", err)
+			}
+			switch string(in) {
+			case "y", "Y":
+				return true, true, nil
+			case "n", "N":
+				return false, true, nil
+			case "u", "U":
+				return true, false, nil
+			case "a", "A":
+				return false, false, nil
+			case "q", "Q":
+				os.Exit(0)
+				return
+			case "\n":
+				// quietly read another byte
+				continue
+			default:
+				fmt.Printf("Unexpected response %q\n", in)
+			}
+		}
+	}
 }

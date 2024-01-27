@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/mdns"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 	"tinygo.org/x/bluetooth"
@@ -55,6 +56,9 @@ type Discoverer struct {
 	knownDevices map[string]*Device
 
 	lock sync.Mutex
+	// ioLock ensures only one approver can read/write to stdio concurrently. This is needed
+	// so mDNS/BLE can opperate simultaneously.
+	ioLock sync.Mutex
 }
 
 // AddDeviceByAddress attempts to parse a user-provided URI and add the device.
@@ -86,7 +90,7 @@ func (d *Discoverer) AddDeviceByAddress(ctx context.Context, addr string, opts .
 	}
 
 	if strings.HasSuffix(strings.ToLower(u.Hostname()), "."+d.mdnsZone) {
-		// URI is mDNS, we want to resolve it to an IP.
+		// TODO(cbaker) - URI is mDNS, we want to resolve it to an IP.
 		return nil, nil
 	}
 
@@ -98,22 +102,32 @@ func (d *Discoverer) AddDeviceByAddress(ctx context.Context, addr string, opts .
 		return nil, err
 	}
 	dev.lastSeen = d.now()
-	dev = d.addDevice(dev, opts...)
+	dev, _ = d.addDevice(ctx, dev, opts...)
 	return dev, nil
 }
 
-func (d *Discoverer) addDevice(dev *Device, opts ...DeviceOption) *Device {
+func (d *Discoverer) addDevice(ctx context.Context, dev *Device, opts ...DeviceOption) (*Device, bool) {
+	ll := d.logCtx(ctx, "").With().Str("instance", dev.Instance()).Logger()
 	for _, o := range opts {
 		o(dev)
 	}
 	d.lock.Lock()
 	defer d.lock.Unlock()
 	if existingDev, ok := d.knownDevices[dev.MACAddr]; ok {
+		ll.Debug().Msg("known device was rediscovered; reusing existing reference")
 		existingDev.lastSeen = dev.lastSeen
-		return existingDev
+		return existingDev, false
 	}
-	d.knownDevices[dev.MACAddr] = dev
-	return dev
+	d.knownDevices[strings.ToUpper(dev.MACAddr)] = dev
+	ll.Info().Msg("new device added")
+	return dev, true
+}
+
+func (d *Discoverer) isKnownDevice(mac string) bool {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	_, ok := d.knownDevices[strings.ToUpper(mac)]
+	return ok
 }
 
 // AllDevices returns all known devices.
@@ -134,9 +148,22 @@ func (d *Discoverer) Search(ctx context.Context) ([]*Device, error) {
 	var l sync.Mutex
 	var allDevs []*Device
 	eg, ctx := errgroup.WithContext(ctx)
+	stop := make(chan struct{})
+	defer func() {
+		// This is gross. `stop` may be closed during the search by the confirmation
+		// dialogue. That's concurrency safe by virtue of the ioLock. We could pass
+		// something along so we know the channel is open/closed, or we just do a
+		// non-blocking read on it here and close in the block case.
+		select {
+		case <-stop:
+			// stop is already closed
+		default:
+			close(stop)
+		}
+	}()
 	if d.bleSearchEnabled {
 		eg.Go(func() error {
-			devs, err := d.SearchBLE(ctx)
+			devs, err := d.searchBLE(ctx, stop)
 			l.Lock()
 			defer l.Unlock()
 			allDevs = append(allDevs, devs...)
@@ -145,7 +172,7 @@ func (d *Discoverer) Search(ctx context.Context) ([]*Device, error) {
 	}
 	if d.mdnsSearchEnabled {
 		eg.Go(func() error {
-			devs, err := d.SearchMDNS(ctx)
+			devs, err := d.searchMDNS(ctx, stop)
 			l.Lock()
 			defer l.Unlock()
 			allDevs = append(allDevs, devs...)
@@ -153,4 +180,12 @@ func (d *Discoverer) Search(ctx context.Context) ([]*Device, error) {
 		})
 	}
 	return allDevs, eg.Wait()
+}
+
+func (d *Discoverer) logCtx(ctx context.Context, sub string) zerolog.Logger {
+	ll := log.Ctx(ctx).With().Str("component", "discovery")
+	if sub != "" {
+		ll = ll.Str("subcomponent", sub)
+	}
+	return ll.Logger()
 }
