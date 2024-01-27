@@ -193,7 +193,7 @@ func init() {
 		Title: "Device Component RPCs:",
 	})
 	for _, c := range components {
-		discoveryFlags(c.Parent.PersistentFlags(), false)
+		discoveryFlags(c.Parent.PersistentFlags(), false, true)
 		rootCmd.AddCommand(c.Parent)
 		c.Parent.Run = func(cmd *cobra.Command, args []string) {
 			c.Parent.Help()

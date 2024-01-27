@@ -32,7 +32,7 @@ func init() {
 	prometheusCmd.Flags().StringVar(&promSubsystem, "prometheus-subsystem", promserver.DefaultSubsystem, "set the subsystem section of the prometheus metric names.")
 	prometheusCmd.Flags().IntVar(&promConcurrency, "probe-concurrency", promserver.DefaultConcurrency, "set the number of concurrent probes which will be made to service a metrics request.")
 	prometheusCmd.Flags().DurationVar(&promDeviceTimeout, "device-timeout", promserver.DefaultDeviceTimeout, "set the maximum time allowed for a device to respond to it probe.")
-	discoveryFlags(prometheusCmd.Flags(), true)
+	discoveryFlags(prometheusCmd.Flags(), true, false)
 	rootCmd.AddCommand(prometheusCmd)
 	rootCmd.AddGroup(&cobra.Group{
 		ID:    "servers",

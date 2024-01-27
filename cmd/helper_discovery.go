@@ -33,7 +33,7 @@ var (
 	preferIPVersion string
 )
 
-func discoveryFlags(f *pflag.FlagSet, withTTL bool) {
+func discoveryFlags(f *pflag.FlagSet, withTTL, interactive bool) {
 	f.StringArrayVar(
 		&hosts,
 		"host",
@@ -86,7 +86,7 @@ func discoveryFlags(f *pflag.FlagSet, withTTL bool) {
 	f.BoolVar(
 		&searchInteractive,
 		"search-interactive",
-		true,
+		interactive,
 		"if true (default) confirm devices discovered in search before proceeding with commands.",
 	)
 
