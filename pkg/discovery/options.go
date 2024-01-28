@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"net"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/mdns"
@@ -10,9 +11,11 @@ import (
 
 type options struct {
 	bleAdapter       *bluetooth.Adapter
+	bleLock          sync.Mutex
 	enableBLEAdapter func() error
 	bleSearchEnabled bool
-	now              func() time.Time
+
+	now func() time.Time
 
 	mdnsInterface     *net.Interface
 	mdnsZone          string

@@ -63,6 +63,8 @@ func init() {
 
 func (d *Discoverer) searchBLE(ctx context.Context, stop chan struct{}) ([]*Device, error) {
 	ll := log.Ctx(ctx).With().Str("component", "discovery").Str("subcomponent", "ble").Logger()
+	d.bleLock.Lock()
+	defer d.bleLock.Unlock()
 	if err := d.enableBLEAdapter(); err != nil {
 		return nil, err
 	}
@@ -200,9 +202,6 @@ func (d *Discoverer) searchBLE(ctx context.Context, stop chan struct{}) ([]*Devi
 }
 
 func (d *Discoverer) AddBLE(ctx context.Context, mac string) (*Device, error) {
-	if err := d.enableBLEAdapter(); err != nil {
-		return nil, err
-	}
 	macStr := strings.ToUpper(mac)
 	dev, _ := d.addDevice(ctx, &Device{
 		MACAddr: macStr,
@@ -231,8 +230,13 @@ func (b *BLEDevice) open(ctx context.Context, mac string) error {
 	ll := log.Ctx(ctx).With().
 		Str("channel_protocol", "ble").Logger()
 	if b.IsConnected() {
-		ll.Debug().Msg("already connecting, short-circuit opening BLE device")
+		ll.Debug().Msg("already connected, short-circuit opening BLE device")
 		return nil
+	}
+	b.bleLock.Lock()
+	defer b.bleLock.Unlock()
+	if err := b.enableBLEAdapter(); err != nil {
+		return err
 	}
 	b.lock.Lock()
 	device := b.device
@@ -301,6 +305,9 @@ func (b *BLEDevice) searchForBLEDevice(ctx context.Context, mac string, timeout 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	ll := log.Ctx(ctx).With().Str("component", "discovery").Str("subcomponent", "ble").Logger()
+
+	b.bleLock.Lock()
+	defer b.bleLock.Unlock()
 
 	wg.Add(1)
 	go func() {
