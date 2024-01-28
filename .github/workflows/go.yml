@@ -21,8 +21,22 @@ jobs:
       with:
         go-version: '1.21'
 
-    - name: Build
-      run: go build -v ./...
+    - name: Build AMD64
+      run: GOOS=linux GOARCH=amd64 go build -o shellyctl_linux_amd64
+
+    - name: Build AMD64
+      run: GOOS=linux GOARCH=arm64 go build -o shellyctl_linux_arm64
+
+    - name: Build Windows
+      run: GOOS=windows GOARCH=amd64 go build -o shellyctl_windows_arm64
 
     - name: Test
       run: go test -v ./...
+
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: 
+        - shellyctl_amd64
+        - shellyctl_arm64
