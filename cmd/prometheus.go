@@ -51,7 +51,7 @@ var prometheusCmd = &cobra.Command{
 
 		l := log.Ctx(ctx)
 
-		dOpts, err := discoveryOptionsFromFlags()
+		dOpts, err := discoveryOptionsFromFlags(cmd.Flags())
 		if err != nil {
 			l.Fatal().Err(err).Msg("parsing flags")
 		}

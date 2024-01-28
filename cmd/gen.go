@@ -193,20 +193,21 @@ func init() {
 		Title: "Device Component RPCs:",
 	})
 	for _, c := range components {
-		discoveryFlags(c.Parent.PersistentFlags(), false, true)
+
 		rootCmd.AddCommand(c.Parent)
 		c.Parent.Run = func(cmd *cobra.Command, args []string) {
 			c.Parent.Help()
 		}
 		for _, childCmd := range c.Parent.Commands() {
 			childRun := childCmd.RunE
+			discoveryFlags(childCmd.Flags(), false, true)
 			childCmd.RunE = func(cmd *cobra.Command, args []string) error {
 				if err := rootCmd.PersistentPreRunE(cmd, args); err != nil {
 					return err
 				}
 				ctx := cmd.Context()
 				l := log.Ctx(ctx)
-				dOpts, err := discoveryOptionsFromFlags()
+				dOpts, err := discoveryOptionsFromFlags(cmd.Flags())
 				if err != nil {
 					l.Fatal().Err(err).Msg("parsing flags")
 				}

@@ -13,6 +13,7 @@ import (
 	"github.com/jcodybaker/shellyctl/pkg/discovery"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/pflag"
+	"golang.org/x/term"
 )
 
 var (
@@ -27,8 +28,6 @@ var (
 	searchTimeout        time.Duration
 	discoveryConcurrency int
 	skipFailedHosts      bool
-
-	searchInteractive bool
 
 	preferIPVersion string
 )
@@ -83,8 +82,9 @@ func discoveryFlags(f *pflag.FlagSet, withTTL, interactive bool) {
 		"timeout for devices to respond to the mDNS discovery query.",
 	)
 
-	f.BoolVar(
-		&searchInteractive,
+	// search-interactive cannot use the BoolVar() pattern as the default varies by command and
+	// the global be set to whatever the last value was.
+	f.Bool(
 		"search-interactive",
 		interactive,
 		"if true (default) confirm devices discovered in search before proceeding with commands.",
@@ -120,7 +120,7 @@ func discoveryFlags(f *pflag.FlagSet, withTTL, interactive bool) {
 	}
 }
 
-func discoveryOptionsFromFlags() (opts []discovery.DiscovererOption, err error) {
+func discoveryOptionsFromFlags(flags *pflag.FlagSet) (opts []discovery.DiscovererOption, err error) {
 	if len(hosts) == 0 && len(bleDevices) == 0 && !mdnsSearch && !bleSearch {
 		return nil, errors.New("no hosts and or discovery (mDNS)")
 	}
@@ -139,7 +139,21 @@ func discoveryOptionsFromFlags() (opts []discovery.DiscovererOption, err error) 
 	default:
 		return nil, errors.New("invalid value for --prefer-ip-version; must be `4` or `6`")
 	}
+	searchInteractive, err := flags.GetBool("search-interactive")
+	if err != nil {
+		return nil, err
+	}
 	if searchInteractive {
+		if (bleSearch || mdnsSearch) &&
+			!term.IsTerminal(int(os.Stdin.Fd())) &&
+			!flags.Lookup("search-interactive").Changed {
+			log.Logger.Fatal().Msg("Search is configured w/ default `--search-interactive=true` but stdin looks" +
+				" non-interactive. shellyctl will likely stall when devices are detected. If you're" +
+				" certain your search will only find the indented devices you may set " +
+				" `--search-interactive=false` to use all discovered devices. " +
+				" If your terminal can responde to the interactive promps, you may explicitly" +
+				" set --search-interactive=true.")
+		}
 		opts = append(opts, discovery.WithSearchConfirm(searchConfirm))
 	}
 	opts = append(opts,
