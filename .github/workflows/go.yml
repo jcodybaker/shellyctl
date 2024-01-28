@@ -38,8 +38,11 @@ jobs:
     - name: Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
+      env:
+        GITHUB_REPOSITORY: jcodybaker/shellyctl
       with:
+        token: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
         files: |
-          shellyctl_amd64
-          shellyctl_arm64
+          shellyctl_linux_amd64
+          shellyctl_linux_arm64
           shellyctl_windows_arm64
