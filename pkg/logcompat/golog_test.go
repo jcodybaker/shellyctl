@@ -20,7 +20,7 @@ func TestLogWriter(t *testing.T) {
 			in:   "2023/12/27 22:40:53 [INFO] mdns: Closing client",
 			expect: `{
 				"component": "mdns",
-				"level": "info",
+				"level": "debug",
 				"message": "Closing client",
 				"time": "2023-12-27T22:40:53Z"
 			}`,
@@ -30,7 +30,7 @@ func TestLogWriter(t *testing.T) {
 			in:   "2023/12/27 22:40:53.123456 [INFO] mdns: Closing client",
 			expect: `{
 				"component": "mdns",
-				"level": "info",
+				"level": "debug",
 				"message": "Closing client",
 				"time": "2023-12-27T22:40:53Z"
 			}`,

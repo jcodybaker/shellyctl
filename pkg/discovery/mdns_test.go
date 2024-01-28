@@ -67,6 +67,7 @@ func TestDiscovererMDNSSearch(t *testing.T) {
 	}
 	d := NewDiscoverer(
 		func(d *Discoverer) { d.mdnsQueryFunc = queryFunc },
+		WithMDNSSearchEnabled(true),
 	)
 	stop := make(chan struct{})
 	devs, err := d.searchMDNS(ctx, stop)
