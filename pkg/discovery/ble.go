@@ -125,15 +125,18 @@ func (d *Discoverer) searchBLE(ctx context.Context, stop chan struct{}) ([]*Devi
 				ll.Warn().Err(err).Msg("found device, but failed to connect")
 				return
 			}
+			ll.Debug().Msg("BLE connection established")
 			dev.ble = &BLEDevice{
 				options: d.options,
 				device:  bDevice,
 			}
 
+			ll.Debug().Msg("opening GRPC channel to device")
 			if _, err := dev.Open(ctx); err != nil {
 				ll.Warn().Err(err).Msg("found device, but open failed")
 				return
 			}
+			ll.Debug().Msg("GRPC channel opened")
 
 			_, isNew := d.addDevice(ctx, dev)
 			if isNew {
@@ -235,15 +238,15 @@ func (b *BLEDevice) open(ctx context.Context, mac string) error {
 		ll.Debug().Msg("already connected, short-circuit opening BLE device")
 		return nil
 	}
-	b.bleLock.Lock()
-	defer b.bleLock.Unlock()
-	if err := b.enableBLEAdapter(); err != nil {
-		return err
-	}
 	b.lock.Lock()
 	device := b.device
 	b.lock.Unlock()
 	if b.device == nil {
+		b.bleLock.Lock()
+		defer b.bleLock.Unlock()
+		if err := b.enableBLEAdapter(); err != nil {
+			return err
+		}
 		var err error
 		device, err = b.searchForBLEDevice(ctx, mac, b.searchTimeout)
 		if err != nil {
@@ -315,9 +318,11 @@ func (b *BLEDevice) searchForBLEDevice(ctx context.Context, mac string, timeout 
 	go func() {
 		defer wg.Done()
 		<-ctx.Done()
+		ll.Debug().Msg("stopping BLE scan")
 		if err := b.bleAdapter.StopScan(); err != nil {
 			ll.Err(err).Msg("stopping BLE scan")
 		}
+		ll.Debug().Msg("BLE scan stopped")
 	}()
 
 	err = b.bleAdapter.Scan(func(a *bluetooth.Adapter, sr bluetooth.ScanResult) {
