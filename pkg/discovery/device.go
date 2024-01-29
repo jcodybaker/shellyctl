@@ -7,19 +7,23 @@ import (
 
 	"github.com/jcodybaker/go-shelly"
 	"github.com/mongoose-os/mos/common/mgrpc"
+	"github.com/mongoose-os/mos/common/mgrpc/codec"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
+type AuthCallback func(desc string) (pw string, err error)
+
 // Device describes one shelly device.
 type Device struct {
-	uri      string
-	MACAddr  string
-	Name     string
-	Specs    shelly.DeviceSpecs
-	lastSeen time.Time
-	source   discoverySource
-	ble      *BLEDevice
+	uri          string
+	MACAddr      string
+	Name         string
+	Specs        shelly.DeviceSpecs
+	lastSeen     time.Time
+	source       discoverySource
+	ble          *BLEDevice
+	authCallback AuthCallback
 }
 
 // Open creates an mongoose rpc channel to the device.
@@ -32,7 +36,15 @@ func (d *Device) Open(ctx context.Context) (mgrpc.MgRPC, error) {
 		}
 		return d.ble, nil
 	}
-	c, err := mgrpc.New(ctx, d.uri, mgrpc.UseHTTPPost())
+	c, err := mgrpc.New(ctx, d.uri,
+		mgrpc.UseHTTPPost(),
+		mgrpc.CodecOptions(
+			codec.Options{
+				HTTPOut: codec.OutboundHTTPCodecOptions{
+					GetCredsCallback: d.AuthCallback(),
+				},
+			},
+		))
 	if err != nil {
 		return nil, fmt.Errorf("establishing rpc channel: %w", err)
 	}
@@ -47,7 +59,7 @@ func (d *Device) resolveSpecs(ctx context.Context) error {
 	}
 	defer c.Disconnect(ctx)
 	req := shelly.ShellyGetDeviceInfoRequest{}
-	resp, _, err := req.Do(ctx, c)
+	resp, _, err := req.Do(ctx, c, d.AuthCallback())
 	if err != nil {
 		return fmt.Errorf("requesting device info for spec resolve: %w", err)
 	}
@@ -81,6 +93,20 @@ func (d *Device) BestName() string {
 		return d.Name
 	}
 	return d.uri
+}
+
+func (d *Device) AuthCallback() mgrpc.GetCredsCallback {
+	return func() (username string, passwd string, err error) {
+		pw, err := d.authCallback(d.BestName())
+		if err != nil {
+			return "", "", err
+		}
+		// Save the password and use it going forward for this device.
+		d.authCallback = func(desc string) (pw string, err error) {
+			return pw, nil
+		}
+		return shelly.DefaultAuthenticationUsername, pw, nil
+	}
 }
 
 func WithDeviceName(name string) DeviceOption {

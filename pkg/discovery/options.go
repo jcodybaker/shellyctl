@@ -15,6 +15,8 @@ type options struct {
 	enableBLEAdapter func() error
 	bleSearchEnabled bool
 
+	authCallback AuthCallback
+
 	now func() time.Time
 
 	mdnsInterface     *net.Interface
@@ -114,6 +116,13 @@ func WithBLESearchEnabled(enabled bool) DiscovererOption {
 func WithSearchConfirm(confirm SearchConfirm) DiscovererOption {
 	return func(d *Discoverer) {
 		d.searchConfirm = confirm
+	}
+}
+
+// WithAuthCallback sets a default callback for authenticating .
+func WithAuthCallback(authCallback AuthCallback) DiscovererOption {
+	return func(d *Discoverer) {
+		d.authCallback = authCallback
 	}
 }
 

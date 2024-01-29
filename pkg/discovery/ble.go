@@ -112,9 +112,10 @@ func (d *Discoverer) searchBLE(ctx context.Context, stop chan struct{}) ([]*Devi
 			}
 			macStr := strings.ToUpper(scanResult.Address.String())
 			dev := &Device{
-				Name:    scanResult.LocalName(),
-				MACAddr: macStr,
-				uri:     (&url.URL{Scheme: "ble", Host: macStr}).String(),
+				Name:         scanResult.LocalName(),
+				MACAddr:      macStr,
+				uri:          (&url.URL{Scheme: "ble", Host: macStr}).String(),
+				authCallback: d.authCallback,
 			}
 			ll := dev.LogCtx(ctx)
 
@@ -209,6 +210,7 @@ func (d *Discoverer) AddBLE(ctx context.Context, mac string) (*Device, error) {
 		ble: &BLEDevice{
 			options: d.options,
 		},
+		authCallback: d.authCallback,
 	})
 	return dev, nil
 }

@@ -117,11 +117,13 @@ var (
 			Short:   "RPCs related device management, configuration, and status",
 		},
 		Requests: []shelly.RPCRequestBody{
+			&shelly.ShellyGetDeviceInfoRequest{},
 			&shelly.ShellyGetStatusRequest{},
 			&shelly.ShellyGetConfigRequest{},
 			&shelly.ShellyCheckForUpdateRequest{},
 			&shelly.ShellyRebootRequest{},
-			&shelly.ShellySetAuthRequest{},
+			// ShellySetAuth requires some calculation as it depends on the device ID.
+			// &shelly.ShellySetAuthRequest{},
 		},
 	}
 

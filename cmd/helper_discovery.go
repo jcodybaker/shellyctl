@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 )
 
 var (
+	auth                 string
 	hosts                []string
 	mdnsSearch           bool
 	bleSearch            bool
@@ -33,6 +35,13 @@ var (
 )
 
 func discoveryFlags(f *pflag.FlagSet, withTTL, interactive bool) {
+	f.StringVar(
+		&auth,
+		"auth",
+		"",
+		"password to use for authenticating with devices.",
+	)
+
 	f.StringArrayVar(
 		&hosts,
 		"host",
@@ -82,12 +91,18 @@ func discoveryFlags(f *pflag.FlagSet, withTTL, interactive bool) {
 		"timeout for devices to respond to the mDNS discovery query.",
 	)
 
-	// search-interactive cannot use the BoolVar() pattern as the default varies by command and
-	// the global be set to whatever the last value was.
+	// search-interactive and interactive cannot use the BoolVar() pattern as the default
+	// varies by command and the global be set to whatever the last value was.
 	f.Bool(
 		"search-interactive",
 		interactive,
-		"if true (default) confirm devices discovered in search before proceeding with commands.",
+		"if true confirm devices discovered in search before proceeding with commands. Defers to --interactive if not explicitly set.",
+	)
+
+	f.Bool(
+		"interactive",
+		interactive,
+		"if true prompt for confirmation or passwords.",
 	)
 
 	f.IntVar(
@@ -143,10 +158,29 @@ func discoveryOptionsFromFlags(flags *pflag.FlagSet) (opts []discovery.Discovere
 	if err != nil {
 		return nil, err
 	}
+	explictSearchInteractive := flags.Lookup("search-interactive").Changed
+	interactive, err := flags.GetBool("interactive")
+	if err != nil {
+		return nil, err
+	}
+	if !explictSearchInteractive {
+		searchInteractive = interactive
+	}
+	auth, err := flags.GetString("auth")
+	if err != nil {
+		return nil, err
+	}
+	if auth != "" {
+		opts = append(opts, discovery.WithAuthCallback(func(_ string) (passwd string, err error) {
+			return auth, nil
+		}))
+	} else if interactive {
+		opts = append(opts, discovery.WithAuthCallback(passwordPrompt))
+	}
 	if searchInteractive {
 		if (bleSearch || mdnsSearch) &&
 			!term.IsTerminal(int(os.Stdin.Fd())) &&
-			!flags.Lookup("search-interactive").Changed {
+			!explictSearchInteractive {
 			log.Logger.Fatal().Msg("Search is configured w/ default `--search-interactive=true` but stdin looks" +
 				" non-interactive. shellyctl will likely stall when devices are detected. If you're" +
 				" certain your search will only find the indented devices you may set " +
@@ -267,6 +301,30 @@ func searchConfirm(desc string) (approveDevice bool, continueSearch bool, err er
 			default:
 				fmt.Printf("Unexpected response %q\n", in)
 			}
+		}
+	}
+}
+
+func passwordPrompt(desc string) (w string, err error) {
+	var password bytes.Buffer
+	fmt.Printf("\nDevice %s requires authentication. Please enter a password:\n", desc)
+
+	for i := 0; ; i++ {
+		b := []byte{0}
+		if _, err := os.Stdin.Read(b); err != nil {
+			if errors.Is(err, io.EOF) {
+				if i == 0 {
+					return "", errors.New("input is closed")
+				}
+				return password.String(), nil
+			}
+			return "", err
+		}
+		if b[0] == '\n' {
+			return password.String(), nil
+		}
+		if err := password.WriteByte(b[0]); err != nil {
+			return "", err
 		}
 	}
 }

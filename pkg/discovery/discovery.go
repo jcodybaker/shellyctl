@@ -95,8 +95,9 @@ func (d *Discoverer) AddDeviceByAddress(ctx context.Context, addr string, opts .
 	}
 
 	dev := &Device{
-		uri:    u.String(),
-		source: sourceManual,
+		uri:          u.String(),
+		source:       sourceManual,
+		authCallback: d.authCallback,
 	}
 	if err = dev.resolveSpecs(ctx); err != nil {
 		return nil, err
