@@ -14,6 +14,7 @@ import (
 	"github.com/jcodybaker/shellyctl/pkg/discovery"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/pflag"
+	"golang.org/x/crypto/ssh/terminal"
 	"golang.org/x/term"
 )
 
@@ -171,7 +172,7 @@ func discoveryOptionsFromFlags(flags *pflag.FlagSet) (opts []discovery.Discovere
 		return nil, err
 	}
 	if auth != "" {
-		opts = append(opts, discovery.WithAuthCallback(func(_ string) (passwd string, err error) {
+		opts = append(opts, discovery.WithAuthCallback(func(_ context.Context, _ string) (passwd string, err error) {
 			return auth, nil
 		}))
 	} else if interactive {
@@ -305,9 +306,23 @@ func searchConfirm(desc string) (approveDevice bool, continueSearch bool, err er
 	}
 }
 
-func passwordPrompt(desc string) (w string, err error) {
+func passwordPrompt(ctx context.Context, desc string) (w string, err error) {
 	var password bytes.Buffer
 	fmt.Printf("\nDevice %s requires authentication. Please enter a password:\n", desc)
+	log.Ctx(ctx)
+
+	oldState, err := terminal.MakeRaw(int(os.Stdin.Fd()))
+	if err != nil {
+		log.Ctx(ctx).Warn().Err(err).Msg("failed to convert terminal to raw mode for password entry")
+	} else {
+		defer func() {
+			if err := terminal.Restore(int(os.Stdin.Fd()), oldState); err != nil {
+				log.Ctx(ctx).Warn().Err(err).Msg("failed to convert terminal to raw mode for password entry")
+			}
+			fmt.Println()
+			fmt.Println()
+		}()
+	}
 
 	for i := 0; ; i++ {
 		b := []byte{0}
@@ -320,11 +335,15 @@ func passwordPrompt(desc string) (w string, err error) {
 			}
 			return "", err
 		}
-		if b[0] == '\n' {
+		switch b[0] {
+		case '\n', '\r':
 			return password.String(), nil
 		}
 		if err := password.WriteByte(b[0]); err != nil {
 			return "", err
+		}
+		if _, err := os.Stdout.Write([]byte("*")); err != nil {
+			return "", fmt.Errorf("writing to stdout")
 		}
 	}
 }

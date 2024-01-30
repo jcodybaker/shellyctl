@@ -12,7 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-type AuthCallback func(desc string) (pw string, err error)
+type AuthCallback func(ctx context.Context, desc string) (pw string, err error)
 
 // Device describes one shelly device.
 type Device struct {
@@ -41,7 +41,7 @@ func (d *Device) Open(ctx context.Context) (mgrpc.MgRPC, error) {
 		mgrpc.CodecOptions(
 			codec.Options{
 				HTTPOut: codec.OutboundHTTPCodecOptions{
-					GetCredsCallback: d.AuthCallback(),
+					GetCredsCallback: d.AuthCallback(ctx),
 				},
 			},
 		))
@@ -59,7 +59,7 @@ func (d *Device) resolveSpecs(ctx context.Context) error {
 	}
 	defer c.Disconnect(ctx)
 	req := shelly.ShellyGetDeviceInfoRequest{}
-	resp, _, err := req.Do(ctx, c, d.AuthCallback())
+	resp, _, err := req.Do(ctx, c, d.AuthCallback(ctx))
 	if err != nil {
 		return fmt.Errorf("requesting device info for spec resolve: %w", err)
 	}
@@ -95,14 +95,14 @@ func (d *Device) BestName() string {
 	return d.uri
 }
 
-func (d *Device) AuthCallback() mgrpc.GetCredsCallback {
+func (d *Device) AuthCallback(ctx context.Context) mgrpc.GetCredsCallback {
 	return func() (username string, passwd string, err error) {
-		pw, err := d.authCallback(d.BestName())
+		pw, err := d.authCallback(ctx, d.BestName())
 		if err != nil {
 			return "", "", err
 		}
 		// Save the password and use it going forward for this device.
-		d.authCallback = func(desc string) (pw string, err error) {
+		d.authCallback = func(_ context.Context, desc string) (pw string, err error) {
 			return pw, nil
 		}
 		return shelly.DefaultAuthenticationUsername, pw, nil

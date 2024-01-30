@@ -297,12 +297,12 @@ func (s *Server) collectDevice(ctx context.Context, d *discovery.Device, ch chan
 			l.Err(err).Msg("disconnecting from device")
 		}
 	}()
-	status, _, err := (&shelly.ShellyGetStatusRequest{}).Do(ctx, c, d.AuthCallback())
+	status, _, err := (&shelly.ShellyGetStatusRequest{}).Do(ctx, c, d.AuthCallback(ctx))
 	if err != nil {
 		l.Err(err).Msg("querying device status")
 		return
 	}
-	config, _, err := (&shelly.ShellyGetConfigRequest{}).Do(ctx, c, d.AuthCallback())
+	config, _, err := (&shelly.ShellyGetConfigRequest{}).Do(ctx, c, d.AuthCallback(ctx))
 	if err != nil {
 		l.Err(err).Msg("querying device status")
 		return

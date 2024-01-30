@@ -60,7 +60,7 @@ func init() {
 			}
 			ll.Info().Any("request_body", req).Str("method", req.Method()).Msg("sending request")
 			resp := req.NewResponse()
-			_, err = shelly.Do(ctx, conn, d.AuthCallback(), req, resp)
+			_, err = shelly.Do(ctx, conn, d.AuthCallback(ctx), req, resp)
 			if err != nil {
 				return fmt.Errorf("executing %s: %w", req.Method(), err)
 			}
