@@ -5,7 +5,7 @@ go 1.21.3
 require (
 	github.com/go-logr/zerologr v1.2.3
 	github.com/hashicorp/mdns v1.0.5
-	github.com/jcodybaker/go-shelly v0.0.0-20240129013438-f78ef39340b5
+	github.com/jcodybaker/go-shelly v0.0.0-20240205025506-cf7de7b6cbf3
 	github.com/mongoose-os/mos v0.0.0-20230313140341-b44964e63a92
 	github.com/prometheus/client_golang v1.18.0
 	github.com/rs/zerolog v1.31.0
@@ -68,6 +68,7 @@ require (
 	github.com/spf13/cast v1.6.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/tinygo-org/cbgo v0.0.4 // indirect
+	github.com/yalp/jsonpath v0.0.0-20180802001716-5cc68e5049a0 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect

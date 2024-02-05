@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -33,7 +34,7 @@ func init() {
 		rootCmd.Help()
 	}
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "warn", "threshold for outputing logs: trace, debug, info, warn, error, fatal, panic")
-	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "o", "text", "desired output format: json, text, log")
+	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "o", "text", "desired output format: json, min-json, yaml, text, log")
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
@@ -81,6 +82,6 @@ func Execute() {
 	}
 }
 
-func Output(ctx context.Context, msg, field string, f any) error {
-	return activeOutputter(ctx, msg, field, f)
+func Output(ctx context.Context, msg, field string, f any, raw json.RawMessage) error {
+	return activeOutputter(ctx, msg, field, f, raw)
 }

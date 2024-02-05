@@ -1,6 +1,7 @@
 package outputter
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,28 +14,54 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-type Outputter func(ctx context.Context, msg, field string, f any) error
+type Outputter func(ctx context.Context, msg, field string, f any, raw json.RawMessage) error
 
-// JSON encodes the data as JSON output to stdout.
-func JSON(ctx context.Context, msg, field string, f any) error {
+// EchoJSON encodes the data as JSON output to stdout.
+func EchoJSON(ctx context.Context, msg, field string, f any, raw json.RawMessage) error {
 	e := json.NewEncoder(os.Stdout)
 	e.SetIndent("", "  ")
 	return e.Encode(f)
 }
 
-// MinJSON encodes the data as minimized JSON output to stdout.
-func MinJSON(ctx context.Context, msg, field string, f any) error {
+// JSON outputs raw JSON (if possible) after expanding it for readability.
+func JSON(ctx context.Context, msg, field string, f any, raw json.RawMessage) error {
+	if raw == nil {
+		return EchoJSON(ctx, msg, field, f, nil)
+	}
+	var b bytes.Buffer
+	if err := json.Indent(&b, raw, "", "  "); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintln(os.Stdout, b.String())
+	return err
+}
+
+// EchoMinJSON reencodes the data as minimized JSON output to stdout.
+func EchoMinJSON(ctx context.Context, msg, field string, f any, raw json.RawMessage) error {
 	return json.NewEncoder(os.Stdout).Encode(f)
 }
 
+// MinJSON outputs the data in its raw format.
+func MinJSON(ctx context.Context, msg, field string, f any, raw json.RawMessage) error {
+	if raw == nil {
+		return EchoMinJSON(ctx, msg, field, f, nil)
+	}
+	var b bytes.Buffer
+	if err := json.Indent(&b, raw, "", ""); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintln(os.Stdout, b.String())
+	return err
+}
+
 // Log encodes the data as a structured log.
-func Log(ctx context.Context, msg, field string, f any) error {
+func Log(ctx context.Context, msg, field string, f any, raw json.RawMessage) error {
 	log.Ctx(ctx).Info().Any(field, f).Msg(msg)
 	return nil
 }
 
 // Text encodes the data as a structured log.
-func Text(ctx context.Context, msg, field string, f any) error {
+func Text(ctx context.Context, msg, field string, f any, raw json.RawMessage) error {
 	fmt.Printf("%s:", msg)
 	v := reflect.ValueOf(f)
 	if (v.Kind() == reflect.Struct && v.NumField() == 0) ||
@@ -124,8 +151,21 @@ func text(v reflect.Value, firstIndent, indent string) error {
 	return nil
 }
 
-// YAML encodes the data as yaml output to stdout.
-func YAML(ctx context.Context, msg, field string, f any) error {
+// YAML encodes the raw data as yaml output to stdout.
+func YAML(ctx context.Context, msg, field string, f any, raw json.RawMessage) error {
+	if raw == nil {
+		return EchoYAML(ctx, msg, field, f, nil)
+	}
+	yamlBytes, err := yaml.JSONToYAML(raw)
+	if err != nil {
+		return err
+	}
+	_, err = os.Stdout.Write(yamlBytes)
+	return err
+}
+
+// EchoYAML reencodes the data as yaml output to stdout.
+func EchoYAML(ctx context.Context, msg, field string, f any, raw json.RawMessage) error {
 	jsonBytes, err := json.Marshal(f)
 	if err != nil {
 		return err
@@ -151,6 +191,12 @@ func ByName(name string) (Outputter, error) {
 		return Text, nil
 	case "log":
 		return Log, nil
+	case "echo-json":
+		return EchoJSON, nil
+	case "echo-min-json":
+		return EchoMinJSON, nil
+	case "echo-yaml":
+		return EchoYAML, nil
 	default:
 		return nil, fmt.Errorf("unknown output formatter: %q", name)
 	}

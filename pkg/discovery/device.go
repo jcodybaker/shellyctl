@@ -63,7 +63,7 @@ func (d *Device) resolveSpecs(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("requesting device info for spec resolve: %w", err)
 	}
-	d.Specs, err = shelly.MDNSAppToDeviceSpecs(resp.App, resp.Profile)
+	d.Specs, err = shelly.AppToDeviceSpecs(resp.App, resp.Profile)
 	if err != nil {
 		return fmt.Errorf("resolving device info to spec: %w", err)
 	}

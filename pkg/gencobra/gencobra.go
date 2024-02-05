@@ -66,15 +66,17 @@ func RequestToCmd(req shelly.RPCRequestBody, baggage *Baggage) (*cobra.Command, 
 				}
 			}()
 			resp := req.NewResponse()
-			_, err = shelly.Do(ctx, conn, d.AuthCallback(ctx), req, resp)
+			raw, err := shelly.Do(ctx, conn, d.AuthCallback(ctx), req, resp)
 			if err != nil {
 				return fmt.Errorf("executing %s: %w", req.Method(), err)
 			}
+			ll.Debug().RawJSON("raw_response", raw.Response).Msg("got raw response")
 			baggage.Output(
 				ctx,
 				fmt.Sprintf("Response to %s command for %s", req.Method(), d.BestName()),
 				"response",
 				resp,
+				raw.Response,
 			)
 		}
 		return nil
