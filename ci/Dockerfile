@@ -1,5 +1,5 @@
 FROM scratch
 
-COPY  ./shellyctl_linux_amd64 /bin/shellyctl_linux_amd64
+COPY  ./shellyctl_linux_amd64 /bin/shellyctl
 
-ENTRYPOINT [ "/bin/shellyctl_linux_amd64" ]
+CMD [ "/bin/shellyctl" ]
