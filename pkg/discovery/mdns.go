@@ -108,9 +108,9 @@ func sourceIsMDNS(dev *Device) {
 }
 
 func (d *Discoverer) mdnsSEAddr(se *mdns.ServiceEntry) net.IP {
-	if d.preferIPVersion != "6" && !se.AddrV4.IsUnspecified() {
+	if d.preferIPVersion != "6" && se.AddrV4 != nil && !se.AddrV4.IsUnspecified() {
 		return se.AddrV4
-	} else if d.preferIPVersion != "4" && !se.AddrV6.IsUnspecified() {
+	} else if d.preferIPVersion != "4" && se.AddrV6 != nil && !se.AddrV6.IsUnspecified() {
 		return se.AddrV6
 	}
 	return nil
