@@ -107,11 +107,11 @@ func sourceIsMDNS(dev *Device) {
 	dev.source = sourceMDNS
 }
 
-func (d *Discoverer) mdnsSEAddr(se *mdns.ServiceEntry) net.IP {
+func (d *Discoverer) mdnsSEAddr(se *mdns.ServiceEntry) *net.IPAddr {
 	if d.preferIPVersion != "6" && se.AddrV4 != nil && !se.AddrV4.IsUnspecified() {
-		return se.AddrV4
-	} else if d.preferIPVersion != "4" && se.AddrV6 != nil && !se.AddrV6.IsUnspecified() {
-		return se.AddrV6
+		return &net.IPAddr{IP: se.AddrV4}
+	} else if d.preferIPVersion != "4" && se.AddrV6IPAddr != nil && !se.AddrV6IPAddr.IP.IsUnspecified() {
+		return se.AddrV6IPAddr
 	}
 	return nil
 }
@@ -129,13 +129,13 @@ func (d *Discoverer) processMDNSServiceEntry(ctx context.Context, se *mdns.Servi
 	if addr == nil {
 		ll.Warn().
 			IPAddr("addr_v4", se.AddrV4).
-			IPAddr("addr_v6", se.AddrV6).
+			Str("addr_v6", se.AddrV6IPAddr.String()).
 			Bool("prefer_ipv4", d.preferIPVersion == "4").
 			Bool("prefer_ipv6", d.preferIPVersion == "6").
 			Msg("mDNS advertisement with unknown or missing address")
 		return nil
 	}
-	ll = ll.With().IPAddr("mdns_addr", addr).Logger()
+	ll = ll.With().Str("mdns_addr", addr.String()).Logger()
 	var genFound bool
 	for _, f := range se.InfoFields {
 		k, v, ok := strings.Cut(f, "=")
