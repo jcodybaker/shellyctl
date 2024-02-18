@@ -20,7 +20,7 @@ func init() {
 		"password", "", "password to use for auth. If empty, the password will be cleared.",
 	)
 	shellyComponent.Parent.AddCommand(shellyAuthCmd)
-	discoveryFlags(shellyAuthCmd.Flags(), false, true)
+	discoveryFlags(shellyAuthCmd.Flags(), discoveryFlagsOptions{interactive: true})
 	shellyAuthCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
 		ll := log.Ctx(ctx).With().Str("request", (&shelly.ShellySetAuthRequest{}).Method()).Logger()

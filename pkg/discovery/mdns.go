@@ -22,6 +22,11 @@ func (d *Discoverer) searchMDNS(ctx context.Context, stop chan struct{}) ([]*Dev
 	if !d.mdnsSearchEnabled {
 		return nil, nil
 	}
+	if d.searchStrictTimeout {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, d.searchTimeout)
+		defer cancel()
+	}
 	c := make(chan *mdns.ServiceEntry, mdnsSearchBuffer)
 	params := &mdns.QueryParam{
 		Service:             d.mdnsService,
@@ -93,7 +98,7 @@ func (d *Discoverer) searchMDNS(ctx context.Context, stop chan struct{}) ([]*Dev
 		}
 	}()
 
-	if err := d.mdnsQueryFunc(params); err != nil {
+	if err := d.mdnsQueryFunc(ctx, params); err != nil {
 		close(c)
 		return nil, fmt.Errorf("querying mdns for devices: %w", err)
 	}

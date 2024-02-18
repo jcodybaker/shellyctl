@@ -37,7 +37,7 @@ func NewDiscoverer(opts ...DiscovererOption) *Discoverer {
 			mdnsService:   DefaultMDNSService,
 			searchTimeout: DefaultMDNSSearchTimeout,
 			concurrency:   DefaultConcurrency,
-			mdnsQueryFunc: mdns.Query,
+			mdnsQueryFunc: mdns.QueryContext,
 		},
 	}
 	for _, o := range opts {

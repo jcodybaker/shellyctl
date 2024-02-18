@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"context"
 	"net"
 	"sync"
 	"time"
@@ -24,9 +25,10 @@ type options struct {
 	mdnsService       string
 	mdnsSearchEnabled bool
 
-	searchTimeout time.Duration
-	searchConfirm SearchConfirm
-	concurrency   int
+	searchStrictTimeout bool
+	searchTimeout       time.Duration
+	searchConfirm       SearchConfirm
+	concurrency         int
 
 	// deviceTTL is relevant for long-lived commands (like prometheus metrics server) when
 	// mixed with mDNS or other ephemeral discovery.
@@ -34,7 +36,7 @@ type options struct {
 
 	preferIPVersion string
 
-	mdnsQueryFunc func(*mdns.QueryParam) error
+	mdnsQueryFunc func(context.Context, *mdns.QueryParam) error
 }
 
 // DiscovererOption provides optional parameters for the Discoverer.
@@ -123,6 +125,14 @@ func WithSearchConfirm(confirm SearchConfirm) DiscovererOption {
 func WithAuthCallback(authCallback AuthCallback) DiscovererOption {
 	return func(d *Discoverer) {
 		d.authCallback = authCallback
+	}
+}
+
+// WithSearchStrictTimeout will force devices which have been discovered, but not resolved and added
+// to finish within the search timeout or be cancelled.
+func WithSearchStrictTimeout(strictTimeoutMode bool) DiscovererOption {
+	return func(d *Discoverer) {
+		d.searchStrictTimeout = strictTimeoutMode
 	}
 }
 

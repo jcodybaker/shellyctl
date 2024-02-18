@@ -60,7 +60,7 @@ func TestDiscovererMDNSSearch(t *testing.T) {
 	serviceEntryTemplate.Port, err = strconv.Atoi(port)
 	require.NoError(t, err)
 
-	queryFunc := func(params *mdns.QueryParam) error {
+	queryFunc := func(ctx context.Context, params *mdns.QueryParam) error {
 		se := serviceEntryTemplate
 		params.Entries <- &se
 		return nil

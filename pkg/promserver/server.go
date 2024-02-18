@@ -266,9 +266,11 @@ func (s *Server) Collect(ch chan<- prometheus.Metric) {
 		}
 		l.Debug().Dur("duration", duration).Msg("finished all collection")
 	}()
+	l.Debug().Msg("starting discovery")
 	if _, err := s.discoverer.Search(s.ctx); err != nil {
 		l.Err(err).Msg("finding new devices")
 	}
+	l.Debug().Dur("duration", time.Since(start)).Msg("finished discovery")
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	concurrencyLimit := make(chan struct{}, s.concurrency)

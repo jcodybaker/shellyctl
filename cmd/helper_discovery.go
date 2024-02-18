@@ -19,7 +19,13 @@ import (
 
 var addAll bool
 
-func discoveryFlags(f *pflag.FlagSet, withTTL, interactive bool) {
+type discoveryFlagsOptions struct {
+	withTTL                    bool
+	interactive                bool
+	searchStrictTimeoutDefault bool
+}
+
+func discoveryFlags(f *pflag.FlagSet, opts discoveryFlagsOptions) {
 	f.String(
 		"auth",
 		"",
@@ -67,17 +73,23 @@ func discoveryFlags(f *pflag.FlagSet, withTTL, interactive bool) {
 		"timeout for devices to respond to the mDNS discovery query.",
 	)
 
+	f.Bool(
+		"search-strict-timeout",
+		opts.searchStrictTimeoutDefault,
+		"ignore devices which have been found but completed their initial query within the search-timeout",
+	)
+
 	// search-interactive and interactive cannot use the Bool() pattern as the default
 	// varies by command and the global be set to whatever the last value was.
 	f.Bool(
 		"search-interactive",
-		interactive,
+		opts.interactive,
 		"if true confirm devices discovered in search before proceeding with commands. Defers to --interactive if not explicitly set.",
 	)
 
 	f.Bool(
 		"interactive",
-		interactive,
+		opts.interactive,
 		"if true prompt for confirmation or passwords.",
 	)
 
@@ -98,7 +110,7 @@ func discoveryFlags(f *pflag.FlagSet, withTTL, interactive bool) {
 		"continue with other hosts in the face errors.",
 	)
 
-	if withTTL {
+	if opts.withTTL {
 		f.Duration(
 			"device-ttl",
 			discovery.DefaultDeviceTTL,
@@ -134,22 +146,14 @@ func discoveryOptionsFromFlags(flags *pflag.FlagSet) (opts []discovery.Discovere
 	default:
 		return nil, errors.New("invalid value for --prefer-ip-version; must be `4` or `6`")
 	}
-	searchInteractive, err := flags.GetBool("search-interactive")
-	if err != nil {
-		return nil, err
-	}
+	searchInteractive := viper.GetBool("search-interactive")
 	explictSearchInteractive := flags.Lookup("search-interactive").Changed
-	interactive, err := flags.GetBool("interactive")
-	if err != nil {
-		return nil, err
-	}
+	interactive := viper.GetBool("interactive")
+
 	if !explictSearchInteractive {
 		searchInteractive = interactive
 	}
-	auth, err := flags.GetString("auth")
-	if err != nil {
-		return nil, err
-	}
+	auth := viper.GetString("auth")
 	if auth != "" {
 		opts = append(opts, discovery.WithAuthCallback(func(_ context.Context, _ string) (passwd string, err error) {
 			return auth, nil
@@ -174,6 +178,7 @@ func discoveryOptionsFromFlags(flags *pflag.FlagSet) (opts []discovery.Discovere
 		discovery.WithMDNSZone(viper.GetString("mdns-zone")),
 		discovery.WithMDNSService(viper.GetString("mdns-service")),
 		discovery.WithSearchTimeout(viper.GetDuration("search-timeout")),
+		discovery.WithSearchStrictTimeout(viper.GetBool("search-strict-timeout")),
 		discovery.WithConcurrency(viper.GetInt("discovery-concurrency")),
 		discovery.WithDeviceTTL(viper.GetDuration("device-ttl")),
 		discovery.WithMDNSSearchEnabled(mdnsSearch),

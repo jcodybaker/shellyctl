@@ -202,7 +202,7 @@ func init() {
 		}
 		for _, childCmd := range c.Parent.Commands() {
 			childRun := childCmd.RunE
-			discoveryFlags(childCmd.Flags(), false, true)
+			discoveryFlags(childCmd.Flags(), discoveryFlagsOptions{interactive: true})
 			childCmd.RunE = func(cmd *cobra.Command, args []string) error {
 				if err := rootCmd.PersistentPreRunE(cmd, args); err != nil {
 					return err

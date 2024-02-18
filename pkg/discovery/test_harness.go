@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -38,7 +39,7 @@ func NewTestDiscoverer(t *testing.T, opts ...DiscovererOption) *TestDiscoverer {
 }
 
 // SetMDNSQueryFunc facilitates overriding the mDNS query function for testing.
-func (td *TestDiscoverer) SetMDNSQueryFunc(q func(*mdns.QueryParam) error) {
+func (td *TestDiscoverer) SetMDNSQueryFunc(q func(context.Context, *mdns.QueryParam) error) {
 	td.mdnsQueryFunc = q
 }
 
