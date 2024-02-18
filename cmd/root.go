@@ -18,8 +18,6 @@ import (
 
 var (
 	ctx             context.Context
-	logLevel        string
-	outputFormat    string
 	activeOutputter outputter.Outputter = outputter.JSON
 )
 
@@ -33,15 +31,26 @@ func init() {
 	rootCmd.Run = func(cmd *cobra.Command, args []string) {
 		rootCmd.Help()
 	}
-	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "warn", "threshold for outputing logs: trace, debug, info, warn, error, fatal, panic")
-	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "o", "text", "desired output format: json, min-json, yaml, text, log")
+	rootCmd.PersistentFlags().String("log-level", "warn", "threshold for outputing logs: trace, debug, info, warn, error, fatal, panic")
+	rootCmd.PersistentFlags().StringP("output-format", "o", "text", "desired output format: json, min-json, yaml, text, log")
+	rootCmd.PersistentFlags().String("config", "", "path to config file. format will be determined by extension (.yaml, .json, .toml, .ini valid)")
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+		viper.SetEnvPrefix("SHELLYCTL")
 		viper.AutomaticEnv()
+		viper.BindPFlags(rootCmd.PersistentFlags())
+		viper.BindPFlags(cmd.Flags())
+
+		if configFile := viper.GetString("config"); configFile != "" {
+			viper.SetConfigFile(configFile)
+			if err := viper.ReadInConfig(); err != nil {
+				return err
+			}
+		}
 
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-		switch strings.ToLower(logLevel) {
+		switch strings.ToLower(viper.GetString("log-level")) {
 		case "trace":
 			log.Logger = log.Level(zerolog.TraceLevel)
 		case "debug":
@@ -64,7 +73,7 @@ func init() {
 		ctx = log.Logger.WithContext(ctx)
 
 		var err error
-		activeOutputter, err = outputter.ByName(outputFormat)
+		activeOutputter, err = outputter.ByName(viper.GetString("output-format"))
 		if err != nil {
 			return err
 		}

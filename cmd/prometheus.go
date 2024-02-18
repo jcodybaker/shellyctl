@@ -14,24 +14,16 @@ import (
 	"github.com/jcodybaker/shellyctl/pkg/promserver"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-)
-
-var (
-	bindAddr          net.IP
-	bindPort          uint16
-	promNamespace     string
-	promSubsystem     string
-	promConcurrency   int
-	promDeviceTimeout time.Duration
+	"github.com/spf13/viper"
 )
 
 func init() {
-	prometheusCmd.Flags().IPVar(&bindAddr, "bind-addr", net.IPv6zero, "local ip address to bind the metrics server to")
-	prometheusCmd.Flags().Uint16Var(&bindPort, "bind-port", 8080, "port to bind the metrics server")
-	prometheusCmd.Flags().StringVar(&promNamespace, "prometheus-namespace", promserver.DefaultNamespace, "set the namespace string to use for prometheus metric names.")
-	prometheusCmd.Flags().StringVar(&promSubsystem, "prometheus-subsystem", promserver.DefaultSubsystem, "set the subsystem section of the prometheus metric names.")
-	prometheusCmd.Flags().IntVar(&promConcurrency, "probe-concurrency", promserver.DefaultConcurrency, "set the number of concurrent probes which will be made to service a metrics request.")
-	prometheusCmd.Flags().DurationVar(&promDeviceTimeout, "device-timeout", promserver.DefaultDeviceTimeout, "set the maximum time allowed for a device to respond to it probe.")
+	prometheusCmd.Flags().IP("bind-addr", net.IPv6zero, "local ip address to bind the metrics server to")
+	prometheusCmd.Flags().Uint16("bind-port", 8080, "port to bind the metrics server")
+	prometheusCmd.Flags().String("prometheus-namespace", promserver.DefaultNamespace, "set the namespace string to use for prometheus metric names.")
+	prometheusCmd.Flags().String("prometheus-subsystem", promserver.DefaultSubsystem, "set the subsystem section of the prometheus metric names.")
+	prometheusCmd.Flags().Int("probe-concurrency", promserver.DefaultConcurrency, "set the number of concurrent probes which will be made to service a metrics request.")
+	prometheusCmd.Flags().Duration("device-timeout", promserver.DefaultDeviceTimeout, "set the maximum time allowed for a device to respond to it probe.")
 	discoveryFlags(prometheusCmd.Flags(), true, false)
 	rootCmd.AddCommand(prometheusCmd)
 	rootCmd.AddGroup(&cobra.Group{
@@ -63,15 +55,15 @@ var prometheusCmd = &cobra.Command{
 		ps := promserver.NewServer(
 			ctx,
 			disc,
-			promserver.WithPrometheusNamespace(promNamespace),
-			promserver.WithPrometheusSubsystem(promSubsystem),
-			promserver.WithConcurrency(promConcurrency),
-			promserver.WithDeviceTimeout(promDeviceTimeout),
+			promserver.WithPrometheusNamespace(viper.GetString("prometheus-namespace")),
+			promserver.WithPrometheusSubsystem(viper.GetString("prometheus-subsystem")),
+			promserver.WithConcurrency(viper.GetInt("probe-concurrency")),
+			promserver.WithDeviceTimeout(viper.GetDuration("device-timeout")),
 		)
 
 		hs := http.Server{
 			Handler: ps,
-			Addr:    net.JoinHostPort(bindAddr.String(), strconv.Itoa(int(bindPort))),
+			Addr:    net.JoinHostPort(viper.GetString("bind-addr"), strconv.Itoa(int(viper.GetUint16("bind-port")))),
 		}
 		go func() {
 			<-ctx.Done()
@@ -81,7 +73,7 @@ var prometheusCmd = &cobra.Command{
 				l.Err(err).Msg("shutting down http server")
 			}
 		}()
-		l.Info().Msg("starting metrics server")
+		l.Info().Str("bind_address", hs.Addr).Msg("starting metrics server")
 		if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			l.Err(err).Msg("starting http server")
 		}

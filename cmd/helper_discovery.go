@@ -9,90 +9,63 @@ import (
 	"net"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/jcodybaker/shellyctl/pkg/discovery"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/pflag"
-	"golang.org/x/crypto/ssh/terminal"
+	"github.com/spf13/viper"
 	"golang.org/x/term"
 )
 
-var (
-	auth                 string
-	hosts                []string
-	mdnsSearch           bool
-	bleSearch            bool
-	bleDevices           []string
-	mdnsInterface        string
-	mdnsZone             string
-	mdnsService          string
-	discoveryDeviceTTL   time.Duration
-	searchTimeout        time.Duration
-	discoveryConcurrency int
-	skipFailedHosts      bool
-
-	preferIPVersion string
-)
-
 func discoveryFlags(f *pflag.FlagSet, withTTL, interactive bool) {
-	f.StringVar(
-		&auth,
+	f.String(
 		"auth",
 		"",
 		"password to use for authenticating with devices.",
 	)
 
-	f.StringArrayVar(
-		&hosts,
+	f.StringArray(
 		"host",
 		[]string{},
 		"host address of a single device. IP, DNS, or mDNS/BonJour addresses are accepted. If a URL scheme is provided, only `http` and `https` are supported. mDNS names must be within the zone specified by the `--mdns-zone` flag (default `local`).")
 
-	f.BoolVar(
-		&mdnsSearch,
+	f.Bool(
 		"mdns-search",
 		false,
 		"if true, devices will be discovered via mDNS")
 
-	f.BoolVar(
-		&bleSearch,
+	f.Bool(
 		"ble-search",
 		false,
 		"if true, devices will be discovered via Bluetooth Low-Energy")
 
-	f.StringArrayVar(
-		&bleDevices,
+	f.StringArray(
 		"ble-device",
 		[]string{},
 		"MAC address of a single bluetooth low-energy device. May be specified multiple times to work with multiple devices.")
 
-	f.StringVar(
-		&mdnsInterface,
+	f.String(
 		"mdns-interface",
 		"",
 		"if specified, search only the specified network interface for devices.")
 
-	f.StringVar(
-		&mdnsZone,
+	f.String(
 		"mdns-zone",
 		discovery.DefaultMDNSZone,
 		"mDNS zone to search")
 
-	f.StringVar(
-		&mdnsService,
+	f.String(
 		"mdns-service",
 		discovery.DefaultMDNSService,
 		"mDNS service to search")
 
-	f.DurationVar(
-		&searchTimeout,
+	f.Duration(
 		"search-timeout",
 		discovery.DefaultMDNSSearchTimeout,
 		"timeout for devices to respond to the mDNS discovery query.",
 	)
 
-	// search-interactive and interactive cannot use the BoolVar() pattern as the default
+	// search-interactive and interactive cannot use the Bool() pattern as the default
 	// varies by command and the global be set to whatever the last value was.
 	f.Bool(
 		"search-interactive",
@@ -106,29 +79,25 @@ func discoveryFlags(f *pflag.FlagSet, withTTL, interactive bool) {
 		"if true prompt for confirmation or passwords.",
 	)
 
-	f.IntVar(
-		&discoveryConcurrency,
+	f.Int(
 		"discovery-concurrency",
 		discovery.DefaultConcurrency,
 		"number of concurrent ",
 	)
 
-	f.StringVar(
-		&preferIPVersion,
+	f.String(
 		"prefer-ip-version",
 		"",
 		"prefer ip version (`4` or `6`)")
 
-	f.BoolVar(
-		&skipFailedHosts,
+	f.Bool(
 		"skip-failed-hosts",
 		false,
 		"continue with other hosts in the face errors.",
 	)
 
 	if withTTL {
-		f.DurationVar(
-			&discoveryDeviceTTL,
+		f.Duration(
 			"device-ttl",
 			discovery.DefaultDeviceTTL,
 			"time-to-live for discovered devices in long-lived commands like the prometheus server.",
@@ -137,6 +106,14 @@ func discoveryFlags(f *pflag.FlagSet, withTTL, interactive bool) {
 }
 
 func discoveryOptionsFromFlags(flags *pflag.FlagSet) (opts []discovery.DiscovererOption, err error) {
+	viper.BindPFlags(flags)
+	hosts := viper.GetStringSlice("host")
+	bleDevices := viper.GetStringSlice("ble-device")
+	mdnsSearch := viper.GetBool("mdns-search")
+	bleSearch := viper.GetBool("ble-search")
+	mdnsInterface := viper.GetString("mdns-interface")
+	preferIPVersion := viper.GetString("prefer-ip-version")
+
 	if len(hosts) == 0 && len(bleDevices) == 0 && !mdnsSearch && !bleSearch {
 		return nil, errors.New("no hosts and or discovery (mDNS)")
 	}
@@ -192,11 +169,11 @@ func discoveryOptionsFromFlags(flags *pflag.FlagSet) (opts []discovery.Discovere
 		opts = append(opts, discovery.WithSearchConfirm(searchConfirm))
 	}
 	opts = append(opts,
-		discovery.WithMDNSZone(mdnsZone),
-		discovery.WithMDNSService(mdnsService),
-		discovery.WithSearchTimeout(searchTimeout),
-		discovery.WithConcurrency(discoveryConcurrency),
-		discovery.WithDeviceTTL(discoveryDeviceTTL),
+		discovery.WithMDNSZone(viper.GetString("mdns-zone")),
+		discovery.WithMDNSService(viper.GetString("mdns-service")),
+		discovery.WithSearchTimeout(viper.GetDuration("search-timeout")),
+		discovery.WithConcurrency(viper.GetInt("discovery-concurrency")),
+		discovery.WithDeviceTTL(viper.GetDuration("device-ttl")),
 		discovery.WithMDNSSearchEnabled(mdnsSearch),
 		discovery.WithBLESearchEnabled(bleSearch),
 	)
@@ -206,9 +183,12 @@ func discoveryOptionsFromFlags(flags *pflag.FlagSet) (opts []discovery.Discovere
 func discoveryAddDevices(ctx context.Context, d *discovery.Discoverer) error {
 	l := log.Ctx(ctx)
 	var wg sync.WaitGroup
-	concurrencyLimit := make(chan struct{}, discoveryConcurrency)
+	concurrencyLimit := make(chan struct{}, viper.GetInt("discovery-concurrency"))
 	defer close(concurrencyLimit)
 	defer wg.Wait()
+	hosts := viper.GetStringSlice("host")
+	bleDevices := viper.GetStringSlice("ble-device")
+	skipFailedHosts := viper.GetBool("skip-failed-hosts")
 	if len(bleDevices) > 0 {
 		select {
 		case concurrencyLimit <- struct{}{}:
@@ -251,6 +231,8 @@ func discoveryAddDevices(ctx context.Context, d *discovery.Discoverer) error {
 
 func discoveryAddBLEDevices(ctx context.Context, d *discovery.Discoverer) error {
 	l := log.Ctx(ctx)
+	skipFailedHosts := viper.GetBool("skip-failed-hosts")
+	bleDevices := viper.GetStringSlice("ble-device")
 	for _, mac := range bleDevices {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -311,12 +293,12 @@ func passwordPrompt(ctx context.Context, desc string) (w string, err error) {
 	fmt.Printf("\nDevice %s requires authentication. Please enter a password:\n", desc)
 	log.Ctx(ctx)
 
-	oldState, err := terminal.MakeRaw(int(os.Stdin.Fd()))
+	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
 		log.Ctx(ctx).Warn().Err(err).Msg("failed to convert terminal to raw mode for password entry")
 	} else {
 		defer func() {
-			if err := terminal.Restore(int(os.Stdin.Fd()), oldState); err != nil {
+			if err := term.Restore(int(os.Stdin.Fd()), oldState); err != nil {
 				log.Ctx(ctx).Warn().Err(err).Msg("failed to convert terminal to raw mode for password entry")
 			}
 			fmt.Println()
