@@ -158,7 +158,7 @@ By default Shelly devices can be configured with RPCs over Bluetooth Low Energy 
 ```
 $ shellyctl wifi set-config --sta-enable=true --sta-ssid=INTERNET --sta-pass=password --ble-search
 
-Found device BLE device "ShellyPlugUS-AABBCCDDEEFF" (AA:BB:CC:DD:EE:FF)
+Found BLE device "ShellyPlugUS-AABBCCDDEEFF" (AA:BB:CC:DD:EE:FF)
 y - Add device and continue search
 n - Skip this device and continue search
 u - Use this device and stop searching for additional devices

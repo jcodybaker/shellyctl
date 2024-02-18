@@ -17,6 +17,8 @@ import (
 	"golang.org/x/term"
 )
 
+var addAll bool
+
 func discoveryFlags(f *pflag.FlagSet, withTTL, interactive bool) {
 	f.String(
 		"auth",
@@ -250,12 +252,16 @@ func discoveryAddBLEDevices(ctx context.Context, d *discovery.Discoverer) error 
 }
 
 func searchConfirm(desc string) (approveDevice bool, continueSearch bool, err error) {
+	if addAll {
+		return true, true, nil
+	}
 	for {
-		fmt.Printf("\nFound device %s\n", desc)
+		fmt.Printf("\nFound %s\n", desc)
 		fmt.Println("y - Add device and continue search")
 		fmt.Println("n - Skip this device and continue search")
+		fmt.Println("a - Add this device and all other devices found")
 		fmt.Println("u - Use this device and stop searching for additional devices")
-		fmt.Println("a - Abort search without this device")
+		fmt.Println("s - Stop search without this device")
 		fmt.Println("q - Quit without acting on this device or any others")
 		fmt.Println("Use this device [y,n,u,a,q]?")
 		for {
@@ -269,11 +275,14 @@ func searchConfirm(desc string) (approveDevice bool, continueSearch bool, err er
 			switch string(in) {
 			case "y", "Y":
 				return true, true, nil
+			case "a", "A":
+				addAll = true
+				return true, true, nil
 			case "n", "N":
 				return false, true, nil
 			case "u", "U":
 				return true, false, nil
-			case "a", "A":
+			case "s", "S":
 				return false, false, nil
 			case "q", "Q":
 				os.Exit(0)
