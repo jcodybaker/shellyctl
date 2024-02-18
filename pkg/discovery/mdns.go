@@ -130,7 +130,9 @@ func (d *Discoverer) processMDNSServiceEntry(ctx context.Context, se *mdns.Servi
 		ll.Warn().
 			IPAddr("addr_v4", se.AddrV4).
 			IPAddr("addr_v6", se.AddrV6).
-			Msg("mDNS advertisement with unknown or missing ")
+			Bool("prefer_ipv4", d.preferIPVersion == "4").
+			Bool("prefer_ipv6", d.preferIPVersion == "6").
+			Msg("mDNS advertisement with unknown or missing address")
 		return nil
 	}
 	ll = ll.With().IPAddr("mdns_addr", addr).Logger()
