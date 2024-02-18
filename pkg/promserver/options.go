@@ -7,6 +7,9 @@ const (
 	DefaultConcurrency = 10
 	// DefaultDeviceTimeout is the default max time for devices to respond to probes.
 	DefaultDeviceTimeout = 5 * time.Second
+	// DefaultScrapeDurationWarning sets the default value for scrape duration warning. By default
+	// prometheus scrape_timeout is 10s, so 8s is 80% of this value.
+	DefaultScrapeDurationWarning = 8 * time.Second
 	// DefaultNamespace is the default namespace for metrics.
 	DefaultNamespace = "shelly"
 	// DefaultSubsystem is the default subsystem for metrics.
@@ -26,6 +29,13 @@ func WithConcurrency(c int) Option {
 func WithDeviceTimeout(t time.Duration) Option {
 	return func(s *Server) {
 		s.deviceTimeout = t
+	}
+}
+
+// WithScrapeDurationWarning sets the value for scrape duration warning.
+func WithScrapeDurationWarning(t time.Duration) Option {
+	return func(s *Server) {
+		s.scrapeDurationWaring = t
 	}
 }
 

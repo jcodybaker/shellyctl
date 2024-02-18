@@ -57,13 +57,14 @@ var (
 
 func NewServer(ctx context.Context, discoverer *discovery.Discoverer, opts ...Option) http.Handler {
 	s := &Server{
-		discoverer:    discoverer,
-		promReg:       prometheus.NewRegistry(),
-		ctx:           ctx,
-		concurrency:   DefaultConcurrency,
-		deviceTimeout: DefaultDeviceTimeout,
-		namespace:     DefaultNamespace,
-		subsystem:     DefaultSubsystem,
+		discoverer:           discoverer,
+		promReg:              prometheus.NewRegistry(),
+		ctx:                  ctx,
+		concurrency:          DefaultConcurrency,
+		deviceTimeout:        DefaultDeviceTimeout,
+		scrapeDurationWaring: DefaultScrapeDurationWarning,
+		namespace:            DefaultNamespace,
+		subsystem:            DefaultSubsystem,
 	}
 	for _, o := range opts {
 		o(s)
@@ -88,10 +89,11 @@ type Server struct {
 	discoverer *discovery.Discoverer
 	promReg    *prometheus.Registry
 	http.Handler
-	namespace     string
-	subsystem     string
-	concurrency   int
-	deviceTimeout time.Duration
+	namespace            string
+	subsystem            string
+	concurrency          int
+	deviceTimeout        time.Duration
+	scrapeDurationWaring time.Duration
 
 	switchOutputOnDesc                *prometheus.Desc
 	coverPositionDesc                 *prometheus.Desc
@@ -258,7 +260,11 @@ func (s *Server) Collect(ch chan<- prometheus.Metric) {
 	l := log.Ctx(s.ctx)
 	start := time.Now()
 	defer func() {
-		l.Debug().Dur("duration", time.Since(start)).Msg("finished all collection")
+		duration := time.Since(start)
+		if duration >= s.scrapeDurationWaring {
+			l.Warn().Dur("duration", duration).Msg("scrape duration exceeded warning threshold; exceeding the prometheus scrape_timeout will result in missing metrics")
+		}
+		l.Debug().Dur("duration", duration).Msg("finished all collection")
 	}()
 	if _, err := s.discoverer.Search(s.ctx); err != nil {
 		l.Err(err).Msg("finding new devices")
@@ -293,17 +299,16 @@ func (s *Server) collectDevice(ctx context.Context, d *discovery.Device, ch chan
 		Str("uri", d.Instance()).
 		Logger()
 	start := time.Now()
-	defer func() {
-		l.Debug().Dur("duration", time.Since(start)).Msg("finished device collection")
-	}()
 	c, err := d.Open(s.ctx)
 	if err != nil {
 		l.Err(err).Msg("connecting to device")
+		return
 	}
 	defer func() {
 		if err = c.Disconnect(s.ctx); err != nil {
 			l.Err(err).Msg("disconnecting from device")
 		}
+		l.Debug().Dur("duration", time.Since(start)).Msg("finished device collection")
 	}()
 	status, _, err := (&shelly.ShellyGetStatusRequest{}).Do(ctx, c, d.AuthCallback(ctx))
 	if err != nil {

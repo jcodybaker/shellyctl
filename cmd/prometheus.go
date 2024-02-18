@@ -24,6 +24,7 @@ func init() {
 	prometheusCmd.Flags().String("prometheus-subsystem", promserver.DefaultSubsystem, "set the subsystem section of the prometheus metric names.")
 	prometheusCmd.Flags().Int("probe-concurrency", promserver.DefaultConcurrency, "set the number of concurrent probes which will be made to service a metrics request.")
 	prometheusCmd.Flags().Duration("device-timeout", promserver.DefaultDeviceTimeout, "set the maximum time allowed for a device to respond to it probe.")
+	prometheusCmd.Flags().Duration("scrape-duration-warning", promserver.DefaultScrapeDurationWarning, "sets the value for scrape duration warning. Scrapes which exceed this duration will log a warning generate. Default value 8s is 80% of the 10s default prometheus scrape_timeout.")
 	discoveryFlags(prometheusCmd.Flags(), true, false)
 	rootCmd.AddCommand(prometheusCmd)
 	rootCmd.AddGroup(&cobra.Group{
@@ -58,6 +59,7 @@ var prometheusCmd = &cobra.Command{
 			promserver.WithPrometheusNamespace(viper.GetString("prometheus-namespace")),
 			promserver.WithPrometheusSubsystem(viper.GetString("prometheus-subsystem")),
 			promserver.WithConcurrency(viper.GetInt("probe-concurrency")),
+			promserver.WithScrapeDurationWarning(viper.GetDuration("scrape-duration-warning")),
 			promserver.WithDeviceTimeout(viper.GetDuration("device-timeout")),
 		)
 
