@@ -256,6 +256,10 @@ func (s *Server) Describe(ch chan<- *prometheus.Desc) {
 // Collect implements prometheus.Collector.
 func (s *Server) Collect(ch chan<- prometheus.Metric) {
 	l := log.Ctx(s.ctx)
+	start := time.Now()
+	defer func() {
+		l.Debug().Dur("duration", time.Since(start)).Msg("finished all collection")
+	}()
 	if _, err := s.discoverer.Search(s.ctx); err != nil {
 		l.Err(err).Msg("finding new devices")
 	}
@@ -288,6 +292,10 @@ func (s *Server) collectDevice(ctx context.Context, d *discovery.Device, ch chan
 		Str("mac", d.MACAddr).
 		Str("uri", d.Instance()).
 		Logger()
+	start := time.Now()
+	defer func() {
+		l.Debug().Dur("duration", time.Since(start)).Msg("finished device collection")
+	}()
 	c, err := d.Open(s.ctx)
 	if err != nil {
 		l.Err(err).Msg("connecting to device")
