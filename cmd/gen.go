@@ -120,9 +120,16 @@ var (
 			&shelly.ShellyGetDeviceInfoRequest{},
 			&shelly.ShellyGetStatusRequest{},
 			&shelly.ShellyGetConfigRequest{},
+			&shelly.ShellyListMethodsRequest{},
+			&shelly.ShellyListProfilesRequest{},
+			&shelly.ShellyListTimezonesRequest{},
+			&shelly.ShellyDetectLocationRequest{},
+			&shelly.ShellySetProfileRequest{},
 			&shelly.ShellyCheckForUpdateRequest{},
+			&shelly.ShellyUpdateRequest{},
 			&shelly.ShellyRebootRequest{},
 			// ShellySetAuth requires some calculation as it depends on the device ID.
+			// It is implemented in cmd/shelly.go.
 			// &shelly.ShellySetAuthRequest{},
 		},
 	}
