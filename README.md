@@ -223,7 +223,13 @@ Response to Shelly.Reboot command for ShellyPlugUS-AABBCCDDEEFF:
 ## TODO
 * Device Backup & Restore / Support for configuration as code style provisioning.
 * MQTT / WebSocket support
+* Easy upload/download of file-like resources (scripts, certificates, etc)
+* Support for shelly debug logs via Websockets, MQTT, or UDP.
 
+## Releases
+See: [Releases](https://github.com/jcodybaker/shellyctl/releases)
+
+Additionally container images are available: See [GitHub Packages](https://github.com/jcodybaker/shellyctl/pkgs/container/shellyctl/versions?filters%5Bversion_type%5D=tagged)
 
 ## Contributing
 Pull-requests and [issues](https://github.com/jcodybaker/go-shelly/issues) are welcome. Code should be formatted with gofmt, pass existing tests, and ideally add new testing. Test should include samples from live device request/response flows when possible.
