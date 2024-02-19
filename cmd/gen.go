@@ -195,7 +195,7 @@ func init() {
 		Title: "Device Component RPCs:",
 	})
 	for _, c := range components {
-
+		c := c
 		rootCmd.AddCommand(c.Parent)
 		c.Parent.Run = func(cmd *cobra.Command, args []string) {
 			c.Parent.Help()
