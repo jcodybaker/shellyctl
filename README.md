@@ -8,7 +8,7 @@ shellyctl is an unofficial command line client for the [Shelly Gen2 API](https:/
 * prometheus metrics endpoint with the status of known devices.
 
 ## Maturity
-This library is currently in active development (as of January 2024). It has meaningful gaps in testing and functionality. At this stage there is no guarantee of backwards compatibility. Once the project reaches a stable state, I will begin tagging releases with semantic versioning. 
+This library is currently in active development (as of February 2024). It has meaningful gaps in testing and functionality. At this stage there is no guarantee of backwards compatibility. 
 
 ## Usage
 ```
@@ -39,11 +39,40 @@ Additional Commands:
   help        Help about any command
 
 Flags:
-  -h, --help                   help for shellyctl
+      --config string          path to config file. format will be determined by extension (.yaml, .json, .toml, .ini valid)
       --log-level string       threshold for outputing logs: trace, debug, info, warn, error, fatal, panic (default "warn")
-  -o, --output-format string   desired output format: json, text, log (default "text")
+  -o, --output-format string   desired output format: json, min-json, yaml, text, log (default "text")
 
 Use "shellyctl [command] --help" for more information about a command.
+```
+
+### Configuration
+This utility supports configuration via command-line flags, environment variables, or a config file.
+
+#### Environment Variable Configuration
+Command flags (documented as `--flag-name`) may alternatively be set as environment variables namespaced with the `SHELLYCTL_` prefix and with underscores `_` replacing `-` hyphens. For example, if you're uncomfortable passing the authentication password as a command-line argument, you could pass it as an environment variable. 
+
+The following two examples have identical functionality.
+```
+shellyctl shelly get-status --auth=my-secret-password --log-level=debug --mdns-search
+
+SHELLYCTL_AUTH=my-secret-password SHELLYCTL_LOG_LEVEL=debug SHELLYCTL_MDNS_SEARCH=true shellyctl shelly get-status 
+```
+#### Config File
+Command flags (documented as `--flag-name`) may be listed in a YAML (extension .yaml), JSON (.json), TOML (.toml), or INI (.ini) file.
+
+For example:
+```yaml
+bind-port: 19090
+log-level: debug
+host:
+- http://192.168.1.1/
+- http://admin:password@192.168.1.2/
+```
+
+Could be used as a config file for the `shellyctl prometheus` command.
+```
+shellyctl prometheus --config=config.yaml
 ```
 
 ### Prometheus Server

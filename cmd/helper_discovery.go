@@ -99,7 +99,7 @@ func discoveryFlags(f *pflag.FlagSet, opts discoveryFlagsOptions) {
 	f.Int(
 		"discovery-concurrency",
 		discovery.DefaultConcurrency,
-		"number of concurrent ",
+		"number of concurrent discovery threads",
 	)
 
 	f.String(
