@@ -1,0 +1,86 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    kubernetes.io/metadata.name: shellyctl
+  name: shellyctl
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shellyctl-prom
+  namespace: shellyctl
+data:
+  shellyctl-prom.yaml: |
+    bind-port: 9090
+    log-level: debug
+    host:
+    # Example host config with password.
+    - http://admin:password@127.0.0.1
+    - http://127.0.0.1
+
+---  
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: shellyctl-prom
+  name: shellyctl-prom
+  namespace: shellyctl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shellyctl-prom
+  template:
+    metadata:
+      labels:
+        app: shellyctl-prom
+    spec:
+      containers:
+      - command:
+        - /bin/shellyctl
+        - prometheus
+        env:
+        - name: SHELLYCTL_CONFIG
+          value: /run/shellyctl/shellyctl-prom.yaml
+        image: ghcr.io/jcodybaker/shellyctl:latest
+        imagePullPolicy: Always
+        name: shellyctl
+        ports:
+        - containerPort: 9090
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /run/shellyctl
+          name: config
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: shellyctl-prom
+        name: config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: shellyctl-prom
+  annotations:
+    prometheus.io/port: "9090"
+    prometheus.io/scrape: "true"
+  name: shellyctl-prom
+  namespace: shellyctl
+spec:
+  ports:
+  - name: 9090-9090
+    port: 9090
+    protocol: TCP
+    targetPort: 9090
+  selector:
+    app: shellyctl-prom
+  type: ClusterIP

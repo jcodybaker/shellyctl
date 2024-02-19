@@ -76,6 +76,10 @@ shellyctl prometheus --config=config.yaml
 ```
 
 ### Prometheus Server
+The `prometheus` sub-command facilitates running a [Prometheus](https://prometheus.io/) compatible metrics server.
+
+See [contrib/k8s](contrib/k8s) for instructions on running the prometheus server within a Kubernetes cluster.
+
 ```
 Host a prometheus metrics exporter for shelly devices
 

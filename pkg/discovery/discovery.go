@@ -80,7 +80,7 @@ func (d *Discoverer) AddDeviceByAddress(ctx context.Context, addr string, opts .
 	default:
 		return nil, fmt.Errorf("unsupported URI scheme %q", u.Scheme)
 	}
-	if u.Path == "" {
+	if u.Path == "" || u.Path == "/" {
 		u.Path = "/rpc"
 	}
 	if u.Path != "/rpc" {
