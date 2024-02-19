@@ -35,7 +35,10 @@ func discoveryFlags(f *pflag.FlagSet, opts discoveryFlagsOptions) {
 	f.StringArray(
 		"host",
 		[]string{},
-		"host address of a single device. IP, DNS, or mDNS/BonJour addresses are accepted. If a URL scheme is provided, only `http` and `https` are supported. mDNS names must be within the zone specified by the `--mdns-zone` flag (default `local`).")
+		"host address of a single device. IP, DNS, or mDNS/BonJour addresses are accepted.\n"+
+			"If a URL scheme is provided, only `http` and `https` schemes are supported.\n"+
+			"mDNS names must be within the zone specified by the `--mdns-zone` flag (default `local`).\n"+
+			"URL formatted auth is supported (ex. `http://admin:password@1.2.3.4/`)")
 
 	f.Bool(
 		"mdns-search",

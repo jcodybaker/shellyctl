@@ -48,7 +48,7 @@ Use "shellyctl [command] --help" for more information about a command.
 
 ### Prometheus Server
 ```
-host a prometheus metrics exporter for shelly devices
+Host a prometheus metrics exporter for shelly devices
 
 Usage:
   shellyctl prometheus [flags]
@@ -57,26 +57,38 @@ Aliases:
   prometheus, prom
 
 Flags:
-      --bind-addr ip                  local ip address to bind the metrics server to (default ::)
-      --bind-port uint16              port to bind the metrics server (default 8080)
-      --device-timeout duration       set the maximum time allowed for a device to respond to it probe. (default 5s)
-      --device-ttl duration           time-to-live for discovered devices in long-lived commands like the prometheus server. (default 5m0s)
-      --discovery-concurrency int     number of concurrent  (default 5)
-  -h, --help                          help for prometheus
-      --host http                     host address of a single device. IP, DNS, or mDNS/BonJour addresses are accepted. If a URL scheme is provided, only http and `https` are supported. mDNS names must be within the zone specified by the `--mdns-zone` flag (default `local`).
-      --mdns-interface string         if specified, search only the specified network interface for devices.
-      --mdns-search                   if true, devices will be discovered via mDNS
-      --mdns-service string           mDNS service to search (default "_shelly._tcp")
-      --mdns-zone string              mDNS zone to search (default "local")
-      --prefer-ip-version 4           prefer ip version (4 or `6`)
-      --probe-concurrency int         set the number of concurrent probes which will be made to service a metrics request. (default 10)
-      --prometheus-namespace string   set the namespace string to use for prometheus metric names. (default "shelly")
-      --prometheus-subsystem string   set the subsystem section of the prometheus metric names. (default "status")
-      --search-timeout duration       timeout for devices to respond to the mDNS discovery query. (default 1s)
-      --skip-failed-hosts             continue with other hosts in the face errors.
+      --auth string                        password to use for authenticating with devices.
+      --bind-addr ip                       local ip address to bind the metrics server to (default ::)
+      --bind-port uint16                   port to bind the metrics server (default 8080)
+      --ble-device stringArray             MAC address of a single bluetooth low-energy device. May be specified multiple times to work with multiple devices.
+      --ble-search                         if true, devices will be discovered via Bluetooth Low-Energy
+      --device-timeout duration            set the maximum time allowed for a device to respond to it probe. (default 5s)
+      --device-ttl duration                time-to-live for discovered devices in long-lived commands like the prometheus server. (default 5m0s)
+      --discovery-concurrency int          number of concurrent  (default 5)
+  -h, --help                               help for prometheus
+      --host http                          host address of a single device. IP, DNS, or mDNS/BonJour addresses are accepted.
+                                           If a URL scheme is provided, only http and `https` schemes are supported.
+                                           mDNS names must be within the zone specified by the `--mdns-zone` flag (default `local`).
+                                           URL formatted auth is supported (ex. `http://admin:password@1.2.3.4/`)
+      --interactive                        if true prompt for confirmation or passwords.
+      --mdns-interface string              if specified, search only the specified network interface for devices.
+      --mdns-search                        if true, devices will be discovered via mDNS
+      --mdns-service string                mDNS service to search (default "_shelly._tcp")
+      --mdns-zone string                   mDNS zone to search (default "local")
+      --prefer-ip-version 4                prefer ip version (4 or `6`)
+      --probe-concurrency int              set the number of concurrent probes which will be made to service a metrics request. (default 10)
+      --prometheus-namespace string        set the namespace string to use for prometheus metric names. (default "shelly")
+      --prometheus-subsystem string        set the subsystem section of the prometheus metric names. (default "status")
+      --scrape-duration-warning duration   sets the value for scrape duration warning. Scrapes which exceed this duration will log a warning generate. Default value 8s is 80% of the 10s default prometheus scrape_timeout. (default 8s)
+      --search-interactive                 if true confirm devices discovered in search before proceeding with commands. Defers to --interactive if not explicitly set.
+      --search-strict-timeout              ignore devices which have been found but completed their initial query within the search-timeout (default true)
+      --search-timeout duration            timeout for devices to respond to the mDNS discovery query. (default 1s)
+      --skip-failed-hosts                  continue with other hosts in the face errors.
 
 Global Flags:
-      --log-level string   threshold for outputing logs: trace, debug, info, warn, error, fatal, panic (default "warn")
+      --config string          path to config file. format will be determined by extension (.yaml, .json, .toml, .ini valid)
+      --log-level string       threshold for outputing logs: trace, debug, info, warn, error, fatal, panic (default "warn")
+  -o, --output-format string   desired output format: json, min-json, yaml, text, log (default "text")
 ```
 
 ### RPC Command-line

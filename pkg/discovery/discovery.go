@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/mdns"
+	"github.com/jcodybaker/go-shelly"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
@@ -88,6 +89,29 @@ func (d *Discoverer) AddDeviceByAddress(ctx context.Context, addr string, opts .
 	if u.RawQuery != "" {
 		return nil, errors.New("URI query parameters are not supported")
 	}
+	ll := d.logCtx(ctx, "").With().Str("host", u.Host).Logger()
+	// Default to the global auth callback, but if there's a un/pw on the URL we'll use that.
+	authCallback := d.authCallback
+	if u.User != nil {
+		if pw, ok := u.User.Password(); ok {
+			if u.User.Username() != "" && u.User.Username() != shelly.DefaultAuthenticationUsername {
+				ll.Warn().
+					Str("username", u.User.Username()).
+					Msg("host URI includes username/password with unsupported username; `" + shelly.DefaultAuthenticationUsername + "` expected")
+			}
+			authCallback = func(ctx context.Context, desc string) (string, error) {
+				return pw, nil
+			}
+		} else if u.User.Username() != "" {
+			// Since only one username is allowed, as a special case we'll treat a URL with only
+			// a username section (no password) as the password. Ex: `http://mypassword@192.168.1.1/`.
+			pw := u.User.Username()
+			authCallback = func(ctx context.Context, desc string) (string, error) {
+				return pw, nil
+			}
+		}
+		u.User = nil
+	}
 
 	if strings.HasSuffix(strings.ToLower(u.Hostname()), "."+d.mdnsZone) {
 		// TODO(cbaker) - URI is mDNS, we want to resolve it to an IP.
@@ -97,8 +121,9 @@ func (d *Discoverer) AddDeviceByAddress(ctx context.Context, addr string, opts .
 	dev := &Device{
 		uri:          u.String(),
 		source:       sourceManual,
-		authCallback: d.authCallback,
+		authCallback: authCallback,
 	}
+
 	if err = dev.resolveSpecs(ctx); err != nil {
 		return nil, err
 	}
