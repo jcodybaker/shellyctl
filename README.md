@@ -139,6 +139,19 @@ Response to Switch.Set command for ShellyPlugUS-AABBCCDDEEFF:
   Was On: true
 ```
 
+#### Updating Devices
+Shelly devices support self-updates via the ([Shelly.Update](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellyupdate)) RPC.  This can be invoked on the command-line with `shellyctl shelly update`. Individual devices can be specified with the `--host` flag, or in bulk using mDNS (`--mdns-search`) or BLE (`--ble-search`) discovery. If no updates are available for the specified release stage, the Shelly devices appear to return error `-114: Resource unavailable: No update info!`; consider using the `--skip-failed-hosts` flag to continue in the face of this error.
+```
+shellyctl shelly update --stage=stable --skip-failed-hosts=true --mdns-search --interactive=false
+
+Response to Shelly.Update command for http://192.168.1.28/rpc: success
+
+7:31PM ERR error executing request; contining because --skip-failed-hosts=true error="RPC Bad Status -114: Resource unavailable: No update info!" component=discovery
+ device_name=ShellyPro3-AABBCCDDEEFF instance=http://192.168.1.12:80/rpc request=Shelly.Update
+
+Response to Shelly.Update command for http://192.168.1.29/rpc: success
+ ```
+
 #### Menu Heirarchy
 - `ble`
   - `get-config` ([BLE.GetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/BLE/#blegetconfig))
@@ -158,7 +171,7 @@ Response to Switch.Set command for ShellyPlugUS-AABBCCDDEEFF:
   - `reset-counters` ([Cover.ResetCounters](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cover/#coverresetcounters))
   - `set-config` ([Cover.SetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cover/#coversetconfig))
   - `stop` ([Cover.Stop](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cover/#coverstop))
-- input
+- `input`
   - `check-expression` ([Input.GetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Input#inputcheckexpression))
   - `get-config` ([Input.GetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Input#inputsetconfig))
   - `get-status` ([Input.GetStatus](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Input#inputgetstatus))
@@ -178,10 +191,18 @@ Response to Switch.Set command for ShellyPlugUS-AABBCCDDEEFF:
   - `delete-all` ([Schedule.DeleteAll](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Schedule#scheduledeleteall))
 - `shelly`
   - `check-for-update` ([Shelly.CheckForUpdate](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellycheckforupdate))
+  - `detect-location` ([Shelly.DetectLocation](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellydetectlocation))
+  - `factory-reset` ([Shelly.FactoryReset](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellyfactoryreset))
   - `get-config` ([Shelly.GetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellygetconfig))
   - `get-status` ([Shelly.GetStatus](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellygetstatus))
+  - `list-methods` ([Shelly.ListMethods](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellylistmethods))
+  - `list-profiles` ([Shelly.ListProfiles](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellylistprofiles))
+  - `list-timezones` ([Shelly.ListTimezones](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellylisttimezones))
   - `reboot` ([Shelly.Reboot](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellyreboot))
+  - `reset-wifi-config` ([Shelly.ResetWiFiConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellyresetwificonfig))
   - `set-auth` ([Shelly.SetAuth](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellysetauth))
+  - `set-profile` ([Shelly.SetProfile](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellysetprofile))
+  - `update` ([Shelly.Update](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellyupdate))
 - `switch`
   - `get-config` ([Switch.GetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Switch#switchgetconfig))
   - `get-status` ([Switch.GetStatus](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Switch#switchgetstatusg))

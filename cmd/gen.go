@@ -117,17 +117,19 @@ var (
 			Short:   "RPCs related device management, configuration, and status",
 		},
 		Requests: []shelly.RPCRequestBody{
+			&shelly.ShellyCheckForUpdateRequest{},
+			&shelly.ShellyDetectLocationRequest{},
+			&shelly.ShellyFactoryResetRequest{},
+			&shelly.ShellyGetConfigRequest{},
 			&shelly.ShellyGetDeviceInfoRequest{},
 			&shelly.ShellyGetStatusRequest{},
-			&shelly.ShellyGetConfigRequest{},
 			&shelly.ShellyListMethodsRequest{},
 			&shelly.ShellyListProfilesRequest{},
 			&shelly.ShellyListTimezonesRequest{},
-			&shelly.ShellyDetectLocationRequest{},
-			&shelly.ShellySetProfileRequest{},
-			&shelly.ShellyCheckForUpdateRequest{},
-			&shelly.ShellyUpdateRequest{},
 			&shelly.ShellyRebootRequest{},
+			&shelly.ShellyResetWiFiConfigRequest{},
+			&shelly.ShellySetProfileRequest{},
+			&shelly.ShellyUpdateRequest{},
 			// ShellySetAuth requires some calculation as it depends on the device ID.
 			// It is implemented in cmd/shelly.go.
 			// &shelly.ShellySetAuthRequest{},
@@ -208,6 +210,11 @@ func init() {
 			c.Parent.Help()
 		}
 		for _, childCmd := range c.Parent.Commands() {
+			// Hack 🙄
+			if c.Parent.Use == "shelly" && childCmd.Use == "reset-wi-fi-config" {
+				childCmd.Use = "reset-wifi-config"
+				childCmd.Aliases = append(childCmd.Aliases, "reset-wi-fi-config")
+			}
 			childRun := childCmd.RunE
 			discoveryFlags(childCmd.Flags(), discoveryFlagsOptions{interactive: true})
 			childCmd.RunE = func(cmd *cobra.Command, args []string) error {

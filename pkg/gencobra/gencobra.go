@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 	"github.com/stoewer/go-strcase"
 )
 
@@ -68,7 +69,12 @@ func RequestToCmd(req shelly.RPCRequestBody, baggage *Baggage) (*cobra.Command, 
 			resp := req.NewResponse()
 			raw, err := shelly.Do(ctx, conn, d.AuthCallback(ctx), req, resp)
 			if err != nil {
-				return fmt.Errorf("executing %s: %w", req.Method(), err)
+				if viper.GetBool("skip-failed-hosts") {
+					ll.Err(err).Msg("error executing request; contining because --skip-failed-hosts=true")
+					continue
+				} else {
+					ll.Fatal().Err(err).Msg("error executing request")
+				}
 			}
 			ll.Debug().RawJSON("raw_response", raw.Response).Msg("got raw response")
 			baggage.Output(
