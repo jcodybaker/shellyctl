@@ -68,8 +68,10 @@ func (a *approver[T]) confirm(ctx context.Context, d *provisionalDevice[T]) erro
 	// canceled and the other approver didn't close the stop chan.
 	select {
 	case <-ctx.Done():
+		a.ioLock.Unlock()
 		return ctx.Err()
 	case <-a.stop:
+		a.ioLock.Unlock()
 		return nil
 	default:
 	}
