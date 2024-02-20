@@ -27,12 +27,17 @@ func newDataCommand(reqBuilder reqBuilder, strParam, fileParam, nullParam string
 		var b *bytes.Buffer
 		data := viper.GetString(strParam)
 		dataFile := viper.GetString(fileParam)
-		remove := viper.GetBool(nullParam)
+		remove := false
+		fields := fmt.Sprintf("--%s and --%s", strParam, fileParam)
+		if nullParam != "" {
+			remove = viper.GetBool(nullParam)
+			fields = fmt.Sprintf("--%s, --%s, and --%s", strParam, fileParam, nullParam)
+		}
 		if (data != "" && dataFile != "") || (data != "" && remove) || (dataFile != "" && remove) {
-			return fmt.Errorf("--%s, --%s, and --%s options are mutually exclusive", strParam, fileParam, nullParam)
+			return fmt.Errorf("%s options are mutually exclusive", fields)
 		}
 		if data == "" && dataFile == "" && !remove {
-			return fmt.Errorf("exactly one of --%s, --%s, and --%s options are required", strParam, fileParam, nullParam)
+			return fmt.Errorf("exactly one of %s options are required", fields)
 		}
 		if data != "" {
 			b = bytes.NewBufferString(data)

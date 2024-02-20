@@ -528,6 +528,10 @@ github.com/jcodybaker/go-shelly v0.0.0-20240219095047-15d8021c50d7 h1:cWn6PcVFIq
 github.com/jcodybaker/go-shelly v0.0.0-20240219095047-15d8021c50d7/go.mod h1:EfKnkqHSomR+wV7AoVgv6wU+kz1Xm4RSaEKaWMKWgWg=
 github.com/jcodybaker/go-shelly v0.0.0-20240219095728-be65a682916b h1:Qsp0H62AbXVZ8b2MXfy5vmnw4TDDCr388TAa2ShMGBA=
 github.com/jcodybaker/go-shelly v0.0.0-20240219095728-be65a682916b/go.mod h1:EfKnkqHSomR+wV7AoVgv6wU+kz1Xm4RSaEKaWMKWgWg=
+github.com/jcodybaker/go-shelly v0.0.0-20240219125818-e8cdd5fed7d8 h1:Yrm3Ddb/IXgGkwu2hflAMKpfSyljp+JpaeJJDfC9+e0=
+github.com/jcodybaker/go-shelly v0.0.0-20240219125818-e8cdd5fed7d8/go.mod h1:EfKnkqHSomR+wV7AoVgv6wU+kz1Xm4RSaEKaWMKWgWg=
+github.com/jcodybaker/go-shelly v0.0.0-20240219132253-eb811e71b087 h1:zJBnKH/hGZ7mfWbApAPsxy6TxQZjkwQ5qKZVK7+0OmY=
+github.com/jcodybaker/go-shelly v0.0.0-20240219132253-eb811e71b087/go.mod h1:EfKnkqHSomR+wV7AoVgv6wU+kz1Xm4RSaEKaWMKWgWg=
 github.com/jcodybaker/mdns v0.0.0-20240218225721-3b8606993b85 h1:/Ls0Q1POaNRFf9uopWlac5skKmWCkEwn/EPmueN5Mco=
 github.com/jcodybaker/mdns v0.0.0-20240218225721-3b8606993b85/go.mod h1:RBWesCDwuRmyqepO+WxO8JSfrh3Tj3LkSzXPQlFq2nM=
 github.com/jessevdk/go-flags v1.5.0/go.mod h1:Fw0T6WPc1dYxT4mKEZRfG5kJhaTDP9pj1c2EWnYs/m4=

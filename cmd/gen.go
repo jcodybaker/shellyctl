@@ -110,6 +110,20 @@ var (
 		},
 	}
 
+	scriptComponent = &gencobra.Component{
+		Parent: &cobra.Command{
+			GroupID: "Component RPCs",
+			Use:     "script",
+			Short:   "RPCs related to managing scripts",
+		},
+		Requests: []shelly.RPCRequestBody{
+			&shelly.ScriptCreateRequest{},
+			&shelly.ScriptGetConfigRequest{},
+			&shelly.ScriptSetConfigRequest{},
+			&shelly.ScriptGetStatusRequest{},
+		},
+	}
+
 	shellyComponent = &gencobra.Component{
 		Parent: &cobra.Command{
 			GroupID: "Component RPCs",
@@ -185,6 +199,7 @@ var (
 		lightComponent,
 		mqttComponent,
 		scheduleComponent,
+		scriptComponent,
 		shellyComponent,
 		switchComponent,
 		sysComponent,

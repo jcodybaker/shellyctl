@@ -189,6 +189,12 @@ Response to Shelly.Update command for http://192.168.1.29/rpc: success
 - `schedule`
   - `delete` ([Schedule.Delete](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Schedule#scheduledelete))
   - `delete-all` ([Schedule.DeleteAll](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Schedule#scheduledeleteall))
+- `script`
+  - `create` ([Script.Create](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Script#scriptcreate))
+  - `get-config` ([Script.GetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Script#scriptgetconfig))
+  - `get-status` ([Script.GetStatus](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Script#scriptgetstatus))
+  - `put-code` ([Script.PutCode](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Script#scriptputcode))
+  - `set-config` ([Script.SetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Script#scriptsetconfig))
 - `shelly`
   - `check-for-update` ([Shelly.CheckForUpdate](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellycheckforupdate))
   - `detect-location` ([Shelly.DetectLocation](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellydetectlocation))
