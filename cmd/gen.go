@@ -121,6 +121,11 @@ var (
 			&shelly.ScriptGetConfigRequest{},
 			&shelly.ScriptSetConfigRequest{},
 			&shelly.ScriptGetStatusRequest{},
+			&shelly.ScriptEvalRequest{},
+			&shelly.ScriptStartRequest{},
+			&shelly.ScriptStopRequest{},
+			&shelly.ScriptListRequest{},
+			&shelly.ScriptDeleteRequest{},
 		},
 	}
 

@@ -3,6 +3,7 @@ package cmd
 import (
 	"github.com/jcodybaker/go-shelly"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var (
@@ -12,6 +13,9 @@ var (
 )
 
 func init() {
+	scriptPutCodeCmd.Flags().Int(
+		"id", 0, "Script ID",
+	)
 	scriptPutCodeCmd.Flags().String(
 		"code", "", "Code. (one of --code or --code-file is required)",
 	)
@@ -25,6 +29,7 @@ func init() {
 		func(code *string, append bool) shelly.RPCRequestBody {
 			r := &shelly.ScriptPutCodeRequest{
 				Append: append,
+				ID:     viper.GetInt("id"),
 			}
 			if code != nil {
 				r.Code = *code

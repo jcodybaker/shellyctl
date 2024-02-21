@@ -191,10 +191,15 @@ Response to Shelly.Update command for http://192.168.1.29/rpc: success
   - `delete-all` ([Schedule.DeleteAll](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Schedule#scheduledeleteall))
 - `script`
   - `create` ([Script.Create](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Script#scriptcreate))
+  - `delete` ([Script.Delete](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Script#scriptdelete))
+  - `eval` ([Script.Eval](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Script#scripteval))
   - `get-config` ([Script.GetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Script#scriptgetconfig))
   - `get-status` ([Script.GetStatus](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Script#scriptgetstatus))
+  - `list` ([Script.List](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Script#scriptlist))
   - `put-code` ([Script.PutCode](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Script#scriptputcode))
   - `set-config` ([Script.SetConfig](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Script#scriptsetconfig))
+  - `start` ([Script.Start](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Script#scriptstart))
+  - `stop` ([Script.Stop](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Script#scriptstop))
 - `shelly`
   - `check-for-update` ([Shelly.CheckForUpdate](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellycheckforupdate))
   - `detect-location` ([Shelly.DetectLocation](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly#shellydetectlocation))
@@ -258,6 +263,9 @@ Response to Shelly.Reboot command for ShellyPlugUS-AABBCCDDEEFF:
 * Device Backup & Restore / Support for configuration as code style provisioning.
 * MQTT / WebSocket support
 * Support for shelly debug logs via Websockets, MQTT, or UDP.
+* Missing Methods:
+  * Script.GetCode
+
 
 ## Releases
 See: [Releases](https://github.com/jcodybaker/shellyctl/releases)
