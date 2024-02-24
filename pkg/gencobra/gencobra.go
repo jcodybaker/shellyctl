@@ -290,6 +290,16 @@ func newFlagReader(f *pflag.FlagSet, method string) fieldFunc {
 				var s string
 				s, err = f.GetString(flagName)
 				fieldValue.SetString(s)
+			case reflect.TypeOf(shelly.MQTT_SSL_CA("")):
+				var s string
+				s, err = f.GetString(flagName)
+				fieldValue.Set(reflect.ValueOf(shelly.MQTT_SSL_CA(s)))
+			case reflect.TypeOf(shelly.NewNullString("")):
+				var s string
+				if f.Changed(flagName) {
+					s, err = f.GetString(flagName)
+					fieldValue.Set(reflect.ValueOf(shelly.NewNullString(s)))
+				}
 			case reflect.TypeOf((*string)(nil)):
 				var s string
 				s, err = f.GetString(flagName)
