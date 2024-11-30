@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/hashicorp/mdns"
 	"tinygo.org/x/bluetooth"
 )
@@ -24,6 +25,8 @@ type options struct {
 	mdnsZone          string
 	mdnsService       string
 	mdnsSearchEnabled bool
+
+	mqttConnectOptions mqtt.ClientOptions
 
 	searchStrictTimeout bool
 	searchTimeout       time.Duration
@@ -133,6 +136,13 @@ func WithAuthCallback(authCallback AuthCallback) DiscovererOption {
 func WithSearchStrictTimeout(strictTimeoutMode bool) DiscovererOption {
 	return func(d *Discoverer) {
 		d.searchStrictTimeout = strictTimeoutMode
+	}
+}
+
+// WithMQTTConnectOptions sets connection parameters for MQTT.
+func WithMQTTConnectOptions(c mqtt.ClientOptions) DiscovererOption {
+	return func(d *Discoverer) {
+		d.mqttConnectOptions = c
 	}
 }
 

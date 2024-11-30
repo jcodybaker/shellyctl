@@ -3,13 +3,18 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/jcodybaker/shellyctl/pkg/discovery"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/pflag"
@@ -120,6 +125,12 @@ func discoveryFlags(f *pflag.FlagSet, opts discoveryFlagsOptions) {
 			"time-to-live for discovered devices in long-lived commands like the prometheus server.",
 		)
 	}
+
+	f.String(
+		"mqtt-addr",
+		"",
+		"mqtt server address (URI format or hostname:port)",
+	)
 }
 
 func discoveryOptionsFromFlags(flags *pflag.FlagSet) (opts []discovery.DiscovererOption, err error) {
@@ -164,6 +175,85 @@ func discoveryOptionsFromFlags(flags *pflag.FlagSet) (opts []discovery.Discovere
 	} else if interactive {
 		opts = append(opts, discovery.WithAuthCallback(passwordPrompt))
 	}
+
+	if viper.IsSet("mqtt-addr") {
+		var mqttConnectOptions mqtt.ClientOptions
+		var u *url.URL
+		addr := viper.GetString("mqtt-addr")
+		if strings.Contains(addr, "://") {
+			var err error
+			u, err = url.Parse(addr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse `mqtt-addr`: %v", err)
+			}
+			if u.User != nil {
+				mqttConnectOptions.Username = u.User.Username()
+				mqttConnectOptions.Password, _ = u.User.Password()
+			}
+		} else {
+			u = &url.URL{
+				Host: addr,
+			}
+		}
+		mqttPort := u.Port()
+		if strings.EqualFold(u.Scheme, "mqtt") {
+			u.Scheme = "tcp"
+		}
+		if strings.EqualFold(u.Scheme, "mqtts") {
+			u.Scheme = "tcps"
+		}
+		if u.Scheme == "" {
+			if mqttPort == "1883" {
+				u.Scheme = "tcp"
+			} else {
+				u.Scheme = "tcps"
+			}
+		}
+		if mqttPort == "" {
+			if u.Scheme == "tcp" {
+				mqttPort = "1883"
+			} else {
+				mqttPort = "8883"
+			}
+		}
+		u.Host = net.JoinHostPort(u.Hostname(), mqttPort)
+		if viper.IsSet("mqtt-user") {
+			mqttConnectOptions.Username = viper.GetString("mqtt-user")
+		}
+		if viper.IsSet("mqtt-password") {
+			mqttConnectOptions.Password = viper.GetString("mqtt-password")
+		}
+		if viper.IsSet("mqtt-tls-ca-cert") || viper.GetBool("mqtt-tls-insecure") {
+			mqttConnectOptions.TLSConfig = &tls.Config{
+				InsecureSkipVerify: viper.GetBool("mqtt-tls-insecure"),
+			}
+			if viper.IsSet("mqtt-tls-ca-cert") {
+				mqttConnectOptions.TLSConfig.RootCAs = x509.NewCertPool()
+				certs, err := os.ReadFile(viper.GetString("mqtt-tls-ca-cert"))
+				if err != nil {
+					return nil, fmt.Errorf("reading `mqtt-tls-ca-cert`: %w", err)
+				}
+				if ok := mqttConnectOptions.TLSConfig.RootCAs.AppendCertsFromPEM(certs); !ok {
+					return nil, fmt.Errorf("failed to parse `mqtt-tls-ca-cert` as PEM cert bundle")
+				}
+			}
+		}
+		opts = append(opts, discovery.WithMQTTConnectOptions(mqttConnectOptions))
+	} else {
+		if viper.IsSet("mqtt-user") {
+			return nil, errors.New("mqtt-user is invalid without mqtt-addr")
+		}
+		if viper.IsSet("mqtt-password") {
+			return nil, errors.New("mqtt-password is invalid without mqtt-addr")
+		}
+		if viper.IsSet("mqtt-tls-ca-cert") {
+			return nil, errors.New("mqtt-tls-ca-cert is invalid without mqtt-addr")
+		}
+		if viper.IsSet("mqtt-tls-insecure") {
+			return nil, errors.New("mqtt-tls-insecure is invalid without mqtt-addr")
+		}
+	}
+
 	if searchInteractive {
 		if (bleSearch || mdnsSearch) &&
 			!term.IsTerminal(int(os.Stdin.Fd())) &&
