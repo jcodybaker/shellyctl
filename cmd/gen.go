@@ -54,6 +54,30 @@ var (
 		},
 	}
 
+	devicePowerComponent = &gencobra.Component{
+		Parent: &cobra.Command{
+			GroupID: "Component RPCs",
+			Use:     "device-power",
+			Short:   "RPCs related to device power configuration and status",
+		},
+		Requests: []shelly.RPCRequestBody{
+			&shelly.DevicePowerGetStatusRequest{},
+		},
+	}
+
+	humidityComponent = &gencobra.Component{
+		Parent: &cobra.Command{
+			GroupID: "Component RPCs",
+			Use:     "humidity",
+			Short:   "RPCs related to humidity configuration and status",
+		},
+		Requests: []shelly.RPCRequestBody{
+			&shelly.HumidityGetStatusRequest{},
+			&shelly.HumidityGetConfigRequest{},
+			&shelly.HumiditySetConfigRequest{},
+		},
+	}
+
 	inputComponent = &gencobra.Component{
 		Parent: &cobra.Command{
 			GroupID: "Component RPCs",
@@ -183,6 +207,19 @@ var (
 		},
 	}
 
+	temperatureComponent = &gencobra.Component{
+		Parent: &cobra.Command{
+			GroupID: "Component RPCs",
+			Use:     "temperature",
+			Short:   "RPCs related to temperature configuration and status",
+		},
+		Requests: []shelly.RPCRequestBody{
+			&shelly.TemperatureGetStatusRequest{},
+			&shelly.TemperatureGetConfigRequest{},
+			&shelly.TemperatureSetConfigRequest{},
+		},
+	}
+
 	wifiComponent = &gencobra.Component{
 		Parent: &cobra.Command{
 			GroupID: "Component RPCs",
@@ -200,6 +237,8 @@ var (
 		bleComponent,
 		cloudComponent,
 		coverComponent,
+		devicePowerComponent,
+		humidityComponent,
 		inputComponent,
 		lightComponent,
 		mqttComponent,
@@ -208,6 +247,7 @@ var (
 		shellyComponent,
 		switchComponent,
 		sysComponent,
+		temperatureComponent,
 		wifiComponent,
 	}
 )
