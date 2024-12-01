@@ -29,6 +29,7 @@ type options struct {
 	mqttClientOptions *mqtt.ClientOptions
 	mqttClient        mqtt.Client
 	mqttSearchEnabled bool
+	mqttTopicSubs     []string
 
 	searchStrictTimeout bool
 	searchTimeout       time.Duration
@@ -152,6 +153,13 @@ func WithMQTTConnectOptions(c *mqtt.ClientOptions) DiscovererOption {
 func WithMQTTSearchEnabled(enable bool) DiscovererOption {
 	return func(d *Discoverer) {
 		d.mqttSearchEnabled = enable
+	}
+}
+
+// WithMQTTTopicSubscriptions sets a list of topics to subscribe to for events.
+func WithMQTTTopicSubscriptions(topics []string) DiscovererOption {
+	return func(d *Discoverer) {
+		d.mqttTopicSubs = topics
 	}
 }
 

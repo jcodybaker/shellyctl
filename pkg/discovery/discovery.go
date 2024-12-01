@@ -60,6 +60,9 @@ type Discoverer struct {
 	// ioLock ensures only one approver can read/write to stdio concurrently. This is needed
 	// so mDNS/BLE can opperate simultaneously.
 	ioLock sync.Mutex
+
+	statusChan     chan StatusNotification
+	fullStatusChan chan StatusNotification
 }
 
 // AddDeviceByAddress attempts to parse a user-provided URI and add the device.

@@ -53,6 +53,9 @@ var prometheusCmd = &cobra.Command{
 			l.Fatal().Err(err).Msg("parsing flags")
 		}
 		disc := discovery.NewDiscoverer(dOpts...)
+		if err := disc.MQTTConnect(ctx); err != nil {
+			l.Fatal().Err(err).Msg("connecting to MQTT broker")
+		}
 		if err := discoveryAddDevices(ctx, disc); err != nil {
 			l.Fatal().Err(err).Msg("adding devices")
 		}
