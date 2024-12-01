@@ -5,4 +5,5 @@ type discoverySource string
 const (
 	sourceMDNS   discoverySource = "mdns"
 	sourceManual discoverySource = "manual"
+	sourceMQTT   discoverySource = "mqtt"
 )

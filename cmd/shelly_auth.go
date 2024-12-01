@@ -36,10 +36,12 @@ func shellyAuthCmdRunE(cmd *cobra.Command, args []string) error {
 	password := viper.GetString("password")
 
 	discoverer := discovery.NewDiscoverer(dOpts...)
+	if err := discoverer.MQTTConnect(ctx); err != nil {
+		ll.Fatal().Err(err).Msg("connecting to MQTT broker")
+	}
 	if err := discoveryAddDevices(ctx, discoverer); err != nil {
 		ll.Fatal().Err(err).Msg("adding devices")
 	}
-
 	if _, err := discoverer.Search(ctx); err != nil {
 		return err
 	}

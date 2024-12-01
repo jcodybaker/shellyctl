@@ -19,6 +19,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+	"golang.org/x/exp/rand"
 	"golang.org/x/term"
 )
 
@@ -131,18 +132,54 @@ func discoveryFlags(f *pflag.FlagSet, opts discoveryFlagsOptions) {
 		"",
 		"mqtt server address (URI format or hostname:port)",
 	)
+	f.String(
+		"mqtt-user",
+		"",
+		"mqtt username. Overrides any username in a URI formatted `mqtt-addr`",
+	)
+	f.String(
+		"mqtt-password",
+		"",
+		"mqtt password. Overrides any password in a URI formatted `mqtt-addr`",
+	)
+	f.String(
+		"mqtt-client-id",
+		"",
+		"mqtt client ID.  If empty, one will be generated.",
+	)
+	f.String(
+		"mqtt-tls-ca-cert",
+		"",
+		"path to a PEM formatted certificate authority file to be used for validating the MQTT server identity.",
+	)
+	f.Bool(
+		"mqtt-tls-insecure",
+		false,
+		"if set skip, verifying the TLS host certificate provided by the MQTT server.",
+	)
+	f.Bool(
+		"mqtt-search",
+		false,
+		"if true, devices will be discovered via MQTT")
+	f.StringArray(
+		"mqtt-device",
+		[]string{},
+		"topic prefix or device-id (ex. shellyplugus-0123456789ab) of device to add. `mqtt-device` may be specified multiple times to add mutiple devices.")
+
 }
 
 func discoveryOptionsFromFlags(flags *pflag.FlagSet) (opts []discovery.DiscovererOption, err error) {
 	viper.BindPFlags(flags)
 	hosts := viper.GetStringSlice("host")
 	bleDevices := viper.GetStringSlice("ble-device")
+	mqttDevices := viper.GetStringSlice("mqtt-device")
 	mdnsSearch := viper.GetBool("mdns-search")
 	bleSearch := viper.GetBool("ble-search")
+	mqttSearch := viper.GetBool("mqtt-search")
 	mdnsInterface := viper.GetString("mdns-interface")
 	preferIPVersion := viper.GetString("prefer-ip-version")
 
-	if len(hosts) == 0 && len(bleDevices) == 0 && !mdnsSearch && !bleSearch {
+	if len(hosts) == 0 && len(bleDevices) == 0 && len(mqttDevices) == 0 && !mdnsSearch && !bleSearch && !mqttSearch {
 		return nil, errors.New("no hosts and or discovery (mDNS)")
 	}
 	if mdnsInterface != "" {
@@ -177,7 +214,7 @@ func discoveryOptionsFromFlags(flags *pflag.FlagSet) (opts []discovery.Discovere
 	}
 
 	if viper.IsSet("mqtt-addr") {
-		var mqttConnectOptions mqtt.ClientOptions
+		mqttConnectOptions := mqtt.NewClientOptions()
 		var u *url.URL
 		addr := viper.GetString("mqtt-addr")
 		if strings.Contains(addr, "://") {
@@ -238,7 +275,16 @@ func discoveryOptionsFromFlags(flags *pflag.FlagSet) (opts []discovery.Discovere
 				}
 			}
 		}
-		opts = append(opts, discovery.WithMQTTConnectOptions(mqttConnectOptions))
+		if viper.IsSet("mqtt-client-id") {
+			mqttConnectOptions.ClientID = viper.GetString("mqtt-client-id")
+		} else {
+			mqttConnectOptions.ClientID = fmt.Sprintf("shellyctl-%d", rand.Uint32())
+		}
+		mqttConnectOptions.Servers = append(mqttConnectOptions.Servers, u)
+		mqttConnectOptions.KeepAlive = 10
+		opts = append(opts,
+			discovery.WithMQTTConnectOptions(mqttConnectOptions),
+			discovery.WithMQTTSearchEnabled(viper.GetBool("mqtt-search")))
 	} else {
 		if viper.IsSet("mqtt-user") {
 			return nil, errors.New("mqtt-user is invalid without mqtt-addr")
@@ -252,10 +298,19 @@ func discoveryOptionsFromFlags(flags *pflag.FlagSet) (opts []discovery.Discovere
 		if viper.IsSet("mqtt-tls-insecure") {
 			return nil, errors.New("mqtt-tls-insecure is invalid without mqtt-addr")
 		}
+		if viper.IsSet("mqtt-search") {
+			return nil, errors.New("mqtt-search is invalid without mqtt-addr")
+		}
+		if viper.IsSet("mqtt-device") {
+			return nil, errors.New("mqtt-device is invalid without mqtt-addr")
+		}
+		if viper.IsSet("mqtt-client-id") {
+			return nil, errors.New("mqtt-client-id is invalid without mqtt-addr")
+		}
 	}
 
 	if searchInteractive {
-		if (bleSearch || mdnsSearch) &&
+		if (bleSearch || mdnsSearch || mqttSearch) &&
 			!term.IsTerminal(int(os.Stdin.Fd())) &&
 			!explictSearchInteractive {
 			log.Logger.Fatal().Msg("Search is configured w/ default `--search-interactive=true` but stdin looks" +
@@ -288,6 +343,7 @@ func discoveryAddDevices(ctx context.Context, d *discovery.Discoverer) error {
 	defer wg.Wait()
 	hosts := viper.GetStringSlice("host")
 	bleDevices := viper.GetStringSlice("ble-device")
+	mqttDevices := viper.GetStringSlice("mqtt-device")
 	skipFailedHosts := viper.GetBool("skip-failed-hosts")
 	if len(bleDevices) > 0 {
 		select {
@@ -305,6 +361,7 @@ func discoveryAddDevices(ctx context.Context, d *discovery.Discoverer) error {
 		}()
 	}
 	for _, h := range hosts {
+		h := h
 		// This chan send will block if the we exceed discoveryConcurrency.
 		select {
 		case concurrencyLimit <- struct{}{}:
@@ -318,6 +375,29 @@ func discoveryAddDevices(ctx context.Context, d *discovery.Discoverer) error {
 				<-concurrencyLimit
 			}()
 			if _, err := d.AddDeviceByAddress(ctx, h); err != nil {
+				if !skipFailedHosts {
+					l.Fatal().Err(err).Msg("adding device")
+					return
+				}
+				l.Warn().Err(err).Msg("adding device; continuing because `skip-failed-hosts=true`")
+			}
+		}()
+	}
+	for _, md := range mqttDevices {
+		md := md
+		// This chan send will block if the we exceed discoveryConcurrency.
+		select {
+		case concurrencyLimit <- struct{}{}:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		wg.Add(1)
+		go func() {
+			defer func() {
+				wg.Done()
+				<-concurrencyLimit
+			}()
+			if _, err := d.AddMQTTDevice(ctx, md); err != nil {
 				if !skipFailedHosts {
 					l.Fatal().Err(err).Msg("adding device")
 					return
