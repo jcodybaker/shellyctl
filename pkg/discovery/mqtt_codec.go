@@ -77,6 +77,24 @@ func newMQTTCodec(ctx context.Context, dst string, mqttClient mqtt.Client) (code
 	return c, nil
 }
 
+func newMQTTConsumer(ctx context.Context, topic string, mqttClient mqtt.Client) (codec.Codec, error) {
+	co := mqttClient.OptionsReader()
+	c := &mqttCodec{
+		closeNotify: make(chan struct{}),
+		ready:       make(chan struct{}),
+		rchan:       make(chan frame.Frame),
+		isTLS:       (co.Servers()[0].Scheme == "tcps"),
+		subTopics:   make(map[string]bool),
+		cli:         mqttClient,
+		log:         log.Ctx(ctx),
+	}
+
+	if err := c.subscribe(topic); err != nil {
+		return nil, fmt.Errorf("subscribing to mqtt %q: %w", c.pubTopic, err)
+	}
+	return c, nil
+}
+
 func (c *mqttCodec) subscribe(topic string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

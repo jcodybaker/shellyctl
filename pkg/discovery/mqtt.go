@@ -10,16 +10,14 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/jcodybaker/go-shelly"
-)
-
-const (
-	mqttSearchBuffer = 50
+	"github.com/mongoose-os/mos/common/mgrpc"
+	"github.com/mongoose-os/mos/common/mgrpc/frame"
 )
 
 func (d *Discoverer) MQTTConnect(ctx context.Context) error {
 	ll := d.logCtx(ctx, "mqtt")
 	if d.mqttClientOptions == nil {
-		ll.Debug().Msg("no MQTT serers defined; skipping mqtt connect")
+		ll.Debug().Msg("no MQTT servers defined; skipping mqtt connect")
 		return nil
 	}
 	// opts.SetConnectionLostHandler(c.onConnectionLost)
@@ -30,6 +28,19 @@ func (d *Discoverer) MQTTConnect(ctx context.Context) error {
 	token.Wait()
 	if err := token.Error(); err != nil {
 		return fmt.Errorf("MQTT connect error: %w", err)
+	}
+
+	for _, t := range d.mqttTopicSubs {
+		c, err := newMQTTConsumer(ctx, t, d.mqttClient)
+		if err != nil {
+			return fmt.Errorf("subscribing to MQTT topic %q: %w", t, err)
+		}
+		s := mgrpc.Serve(ctx, c)
+		s.AddHandler("NotifyStatus", d.statusNotificationHandler)
+		s.AddHandler("NotifyFullStatus", d.fullStatusNotificationHandler)
+		s.AddHandler("NotifyEvents", func(mr mgrpc.MgRPC, f *frame.Frame) *frame.Frame {
+			return nil
+		})
 	}
 	return nil
 }

@@ -29,6 +29,7 @@ type discoveryFlagsOptions struct {
 	withTTL                    bool
 	interactive                bool
 	searchStrictTimeoutDefault bool
+	mqttTopics                 []string
 }
 
 func discoveryFlags(f *pflag.FlagSet, opts discoveryFlagsOptions) {
@@ -170,18 +171,18 @@ func discoveryFlags(f *pflag.FlagSet, opts discoveryFlagsOptions) {
 
 func discoveryOptionsFromFlags(flags *pflag.FlagSet) (opts []discovery.DiscovererOption, err error) {
 	viper.BindPFlags(flags)
-	hosts := viper.GetStringSlice("host")
-	bleDevices := viper.GetStringSlice("ble-device")
-	mqttDevices := viper.GetStringSlice("mqtt-device")
+	// hosts := viper.GetStringSlice("host")
+	// bleDevices := viper.GetStringSlice("ble-device")
+	// mqttDevices := viper.GetStringSlice("mqtt-device")
 	mdnsSearch := viper.GetBool("mdns-search")
 	bleSearch := viper.GetBool("ble-search")
 	mqttSearch := viper.GetBool("mqtt-search")
 	mdnsInterface := viper.GetString("mdns-interface")
 	preferIPVersion := viper.GetString("prefer-ip-version")
 
-	if len(hosts) == 0 && len(bleDevices) == 0 && len(mqttDevices) == 0 && !mdnsSearch && !bleSearch && !mqttSearch {
-		return nil, errors.New("no hosts and or discovery (mDNS)")
-	}
+	// if len(hosts) == 0 && len(bleDevices) == 0 && len(mqttDevices) == 0 && !mdnsSearch && !bleSearch && !mqttSearch {
+	// 	return nil, errors.New("no hosts and or discovery (mDNS)")
+	// }
 	if mdnsInterface != "" {
 		i, err := net.InterfaceByName(mdnsInterface)
 		if err != nil {
@@ -279,6 +280,9 @@ func discoveryOptionsFromFlags(flags *pflag.FlagSet) (opts []discovery.Discovere
 			mqttConnectOptions.ClientID = viper.GetString("mqtt-client-id")
 		} else {
 			mqttConnectOptions.ClientID = fmt.Sprintf("shellyctl-%d", rand.Uint32())
+		}
+		if topics := viper.GetStringSlice("mqtt-topic"); len(topics) > 0 {
+			opts = append(opts)
 		}
 		mqttConnectOptions.Servers = append(mqttConnectOptions.Servers, u)
 		mqttConnectOptions.KeepAlive = 10
