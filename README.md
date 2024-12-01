@@ -261,7 +261,7 @@ Response to Shelly.Reboot command for ShellyPlugUS-AABBCCDDEEFF:
 
 ## TODO
 * Device Backup & Restore / Support for configuration as code style provisioning.
-* MQTT / WebSocket support
+* WebSocket support
 * Support for shelly debug logs via Websockets, MQTT, or UDP.
 * Missing Methods:
   * Script.GetCode
