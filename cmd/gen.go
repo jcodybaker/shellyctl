@@ -249,6 +249,13 @@ func init() {
 				}
 
 				baggage.Discoverer = discovery.NewDiscoverer(dOpts...)
+				if err := baggage.Discoverer.MQTTConnect(ctx); err != nil {
+					l.Fatal().Err(err).Msg("connecting to MQTT broker")
+				}
+				_, err = baggage.Discoverer.Search(ctx)
+				if err != nil {
+					l.Fatal().Err(err).Msg("searching for devices")
+				}
 				if err := discoveryAddDevices(ctx, baggage.Discoverer); err != nil {
 					l.Fatal().Err(err).Msg("adding devices")
 				}

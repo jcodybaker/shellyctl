@@ -132,6 +132,22 @@ func (d *Discoverer) AddDeviceByAddress(ctx context.Context, addr string, opts .
 	return dev, nil
 }
 
+func (d *Discoverer) AddMQTTDevice(ctx context.Context, topicPrefix string, opts ...DeviceOption) (*Device, error) {
+	dev := &Device{
+		source:       sourceManual,
+		authCallback: d.authCallback,
+		mqttPrefix:   topicPrefix,
+		mqttClient:   d.mqttClient,
+	}
+
+	if err := dev.resolveSpecs(ctx); err != nil {
+		return nil, err
+	}
+	dev.lastSeen = d.now()
+	dev, _ = d.addDevice(ctx, dev, opts...)
+	return dev, nil
+}
+
 func (d *Discoverer) addDevice(ctx context.Context, dev *Device, opts ...DeviceOption) (*Device, bool) {
 	ll := d.logCtx(ctx, "").With().Str("instance", dev.Instance()).Logger()
 	for _, o := range opts {
@@ -168,7 +184,7 @@ func (d *Discoverer) AllDevices() []*Device {
 }
 
 func (d *Discoverer) Search(ctx context.Context) ([]*Device, error) {
-	if !d.bleSearchEnabled && !d.mdnsSearchEnabled {
+	if !d.bleSearchEnabled && !d.mdnsSearchEnabled && !d.mqttSearchEnabled {
 		return nil, nil
 	}
 	var l sync.Mutex
@@ -199,6 +215,15 @@ func (d *Discoverer) Search(ctx context.Context) ([]*Device, error) {
 	if d.mdnsSearchEnabled {
 		eg.Go(func() error {
 			devs, err := d.searchMDNS(ctx, stop)
+			l.Lock()
+			defer l.Unlock()
+			allDevs = append(allDevs, devs...)
+			return err
+		})
+	}
+	if d.mqttSearchEnabled {
+		eg.Go(func() error {
+			devs, err := d.searchMQTT(ctx, stop)
 			l.Lock()
 			defer l.Unlock()
 			allDevs = append(allDevs, devs...)

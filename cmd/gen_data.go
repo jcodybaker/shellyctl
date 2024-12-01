@@ -68,10 +68,12 @@ func newDataCommand(reqBuilder reqBuilder, strParam, fileParam, nullParam string
 		}
 
 		discoverer := discovery.NewDiscoverer(dOpts...)
+		if err := discoverer.MQTTConnect(ctx); err != nil {
+			ll.Fatal().Err(err).Msg("connecting to MQTT broker")
+		}
 		if err := discoveryAddDevices(ctx, discoverer); err != nil {
 			ll.Fatal().Err(err).Msg("adding devices")
 		}
-
 		if _, err := discoverer.Search(ctx); err != nil {
 			return err
 		}

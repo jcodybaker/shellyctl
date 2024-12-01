@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/jcodybaker/go-shelly"
 	"github.com/mongoose-os/mos/common/mgrpc"
 	"github.com/mongoose-os/mos/common/mgrpc/codec"
@@ -24,6 +25,9 @@ type Device struct {
 	source       discoverySource
 	ble          *BLEDevice
 	authCallback AuthCallback
+
+	mqttPrefix string
+	mqttClient mqtt.Client
 }
 
 // Open creates an mongoose rpc channel to the device.
@@ -35,6 +39,13 @@ func (d *Device) Open(ctx context.Context) (mgrpc.MgRPC, error) {
 			return nil, err
 		}
 		return d.ble, nil
+	}
+	if d.mqttClient != nil && d.mqttPrefix != "" {
+		c, err := newMQTTCodec(ctx, d.mqttPrefix, d.mqttClient)
+		if err != nil {
+			return nil, fmt.Errorf("establishing mqtt rpc channel: %w", err)
+		}
+		return mgrpc.Serve(ctx, c), nil
 	}
 	c, err := mgrpc.New(ctx, d.uri,
 		mgrpc.UseHTTPPost(),

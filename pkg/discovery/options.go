@@ -26,7 +26,9 @@ type options struct {
 	mdnsService       string
 	mdnsSearchEnabled bool
 
-	mqttConnectOptions mqtt.ClientOptions
+	mqttClientOptions *mqtt.ClientOptions
+	mqttClient        mqtt.Client
+	mqttSearchEnabled bool
 
 	searchStrictTimeout bool
 	searchTimeout       time.Duration
@@ -140,9 +142,16 @@ func WithSearchStrictTimeout(strictTimeoutMode bool) DiscovererOption {
 }
 
 // WithMQTTConnectOptions sets connection parameters for MQTT.
-func WithMQTTConnectOptions(c mqtt.ClientOptions) DiscovererOption {
+func WithMQTTConnectOptions(c *mqtt.ClientOptions) DiscovererOption {
 	return func(d *Discoverer) {
-		d.mqttConnectOptions = c
+		d.mqttClientOptions = c
+	}
+}
+
+// WithMQTTSearchEnabled allows enabling or disabling MQTT discovery.
+func WithMQTTSearchEnabled(enable bool) DiscovererOption {
+	return func(d *Discoverer) {
+		d.mqttSearchEnabled = enable
 	}
 }
 
