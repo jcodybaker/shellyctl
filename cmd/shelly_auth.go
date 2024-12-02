@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/jcodybaker/go-shelly"
@@ -63,7 +64,13 @@ func shellyAuthCmdRunE(cmd *cobra.Command, args []string) error {
 		}
 		ll.Info().Any("request_body", req).Str("method", req.Method()).Msg("sending request")
 		resp := req.NewResponse()
-		raw, err := shelly.Do(ctx, conn, d.AuthCallback(ctx), req, resp)
+		reqContext := ctx
+		cancel := func() {} // no-op
+		if dur := viper.GetDuration("rpc-timeout"); dur != 0 {
+			reqContext, cancel = context.WithTimeout(ctx, dur)
+		}
+		raw, err := shelly.Do(reqContext, conn, d.AuthCallback(ctx), req, resp)
+		cancel()
 		if err != nil {
 			return fmt.Errorf("executing %s: %w", req.Method(), err)
 		}

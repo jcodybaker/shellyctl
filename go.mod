@@ -6,7 +6,7 @@ require (
 	github.com/eclipse/paho.golang v0.22.0
 	github.com/go-logr/zerologr v1.2.3
 	github.com/hashicorp/mdns v1.0.5
-	github.com/jcodybaker/go-shelly v0.0.0-20241201161257-1e2122f91d1a
+	github.com/jcodybaker/go-shelly v0.0.0-20241201205537-11afe2ce78e6
 	github.com/mongoose-os/mos v0.0.0-20230313140341-b44964e63a92
 	github.com/prometheus/client_golang v1.18.0
 	github.com/rs/zerolog v1.31.0

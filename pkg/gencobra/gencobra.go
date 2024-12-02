@@ -1,6 +1,7 @@
 package gencobra
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -67,7 +68,13 @@ func RequestToCmd(req shelly.RPCRequestBody, baggage *Baggage) (*cobra.Command, 
 				}
 			}()
 			resp := req.NewResponse()
-			raw, err := shelly.Do(ctx, conn, d.AuthCallback(ctx), req, resp)
+			reqContext := ctx
+			cancel := func() {} // no-op
+			if dur := viper.GetDuration("rpc-timeout"); dur != 0 {
+				reqContext, cancel = context.WithTimeout(ctx, dur)
+			}
+			raw, err := shelly.Do(reqContext, conn, d.AuthCallback(ctx), req, resp)
+			cancel()
 			if err != nil {
 				if viper.GetBool("skip-failed-hosts") {
 					ll.Err(err).Msg("error executing request; contining because --skip-failed-hosts=true")

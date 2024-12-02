@@ -52,3 +52,10 @@ func WithPrometheusSubsystem(subsystem string) Option {
 		s.subsystem = subsystem
 	}
 }
+
+// WithNotificationCacheCacheTTL sets the TTL for the notification cache.
+func WithNotificationCacheCacheTTL(ttl time.Duration) Option {
+	return func(s *Server) {
+		s.notificationCache = newNotificationCache(ttl)
+	}
+}
