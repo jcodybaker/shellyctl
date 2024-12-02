@@ -111,7 +111,7 @@ func text(v reflect.Value, firstIndent, indent string) error {
 			switch fT.Kind() {
 			case reflect.Slice:
 				if f.Len() == 0 {
-					fmt.Printf("%s%s: NULL\n", lineIndent, fieldName)
+					continue
 				} else if fT.Elem().Kind() == reflect.Struct {
 					fmt.Printf("%s%s:\n", lineIndent, fieldName)
 					for j := 0; j < f.Len(); j++ {

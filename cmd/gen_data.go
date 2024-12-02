@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -96,7 +97,13 @@ func newDataCommand(reqBuilder reqBuilder, strParam, fileParam, nullParam string
 					Str("method", req.Method()).
 					Any("request_body", req).
 					Msg("sending request to clear data")
-				_, err = shelly.Do(ctx, conn, d.AuthCallback(ctx), req, resp)
+				reqContext := ctx
+				cancel := func() {} // no-op
+				if dur := viper.GetDuration("rpc-timeout"); dur != 0 {
+					reqContext, cancel = context.WithTimeout(ctx, dur)
+				}
+				_, err = shelly.Do(reqContext, conn, d.AuthCallback(ctx), req, resp)
+				cancel()
 				if err != nil {
 					if viper.GetBool("skip-failed-hosts") {
 						ll.Err(err).Msg("error executing request; contining because --skip-failed-hosts=true")
@@ -121,7 +128,13 @@ func newDataCommand(reqBuilder reqBuilder, strParam, fileParam, nullParam string
 					Int("line", line).
 					Any("request_body", req).
 					Msg("sending data")
-				rawResp, err = shelly.Do(ctx, conn, d.AuthCallback(ctx), req, resp)
+				reqContext := ctx
+				cancel := func() {} // no-op
+				if dur := viper.GetDuration("rpc-timeout"); dur != 0 {
+					reqContext, cancel = context.WithTimeout(ctx, dur)
+				}
+				rawResp, err = shelly.Do(reqContext, conn, d.AuthCallback(ctx), req, resp)
+				cancel()
 				if err != nil {
 					return err
 				}

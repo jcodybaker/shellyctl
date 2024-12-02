@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -69,6 +70,9 @@ func NewServer(ctx context.Context, discoverer *discovery.Discoverer, opts ...Op
 	for _, o := range opts {
 		o(s)
 	}
+	if s.notificationCache == nil {
+		s.notificationCache = newNotificationCache(defaultNotificationCacheTTL)
+	}
 	s.Handler = promhttp.HandlerFor(s.promReg, promhttp.HandlerOpts{})
 	s.initDescs()
 	s.promReg.MustRegister(s)
@@ -94,6 +98,8 @@ type Server struct {
 	concurrency          int
 	deviceTimeout        time.Duration
 	scrapeDurationWaring time.Duration
+
+	notificationCache *notificationCache
 
 	switchOutputOnDesc                *prometheus.Desc
 	coverPositionDesc                 *prometheus.Desc
@@ -295,13 +301,25 @@ func (s *Server) Collect(ch chan<- prometheus.Metric) {
 	}
 }
 
-func (s *Server) collectDevice(ctx context.Context, d *discovery.Device, ch chan<- prometheus.Metric) {
+type deviceInfo struct {
+	instance string
+	name     string
+	mac      string
+}
+
+func (s *Server) collectDevice(ctx context.Context, dev *discovery.Device, ch chan<- prometheus.Metric) {
+	d := &deviceInfo{
+		name:     dev.BestName(),
+		instance: dev.Instance(),
+		mac:      dev.MACAddr,
+	}
 	l := log.Ctx(ctx).With().
-		Str("mac", d.MACAddr).
-		Str("uri", d.Instance()).
+		Str("mac", d.mac).
+		Str("uri", d.instance).
 		Logger()
+	ctx = l.WithContext(ctx)
 	start := time.Now()
-	c, err := d.Open(s.ctx)
+	c, err := dev.Open(s.ctx)
 	if err != nil {
 		l.Err(err).Msg("connecting to device")
 		return
@@ -312,19 +330,19 @@ func (s *Server) collectDevice(ctx context.Context, d *discovery.Device, ch chan
 		}
 		l.Debug().Dur("duration", time.Since(start)).Msg("finished device collection")
 	}()
-	status, _, err := (&shelly.ShellyGetStatusRequest{}).Do(ctx, c, d.AuthCallback(ctx))
+	status, _, err := (&shelly.ShellyGetStatusRequest{}).Do(ctx, c, dev.AuthCallback(ctx))
 	if err != nil {
 		l.Err(err).Msg("querying device status")
 		return
 	}
-	config, _, err := (&shelly.ShellyGetConfigRequest{}).Do(ctx, c, d.AuthCallback(ctx))
+	config, _, err := (&shelly.ShellyGetConfigRequest{}).Do(ctx, c, dev.AuthCallback(ctx))
 	if err != nil {
 		l.Err(err).Msg("querying device status")
 		return
 	}
-	deviceName := d.MACAddr
+
 	if config.System != nil && config.System.Device != nil && config.System.Device.Name != nil {
-		deviceName = *config.System.Device.Name
+		d.name = *config.System.Device.Name
 	}
 
 	if len(config.Switches) != len(status.Switches) {
@@ -334,614 +352,690 @@ func (s *Server) collectDevice(ctx context.Context, d *discovery.Device, ch chan
 			Msg("mismatch between Shelly.GetConfig.Switch and Shelly.GetStatus.Switch")
 		return
 	}
+
 	for i, swc := range config.Switches {
 		sws := status.Switches[i]
-		swc := swc
-
-		componentType := "switch"
-		componentName := fmt.Sprintf("%s:%d", componentType, i)
-		if swc.Name != nil {
-			componentName = *swc.Name
-		}
-
-		// switch_output_on
-		m, err := prometheus.NewConstMetric(
-			s.switchOutputOnDesc,
-			prometheus.GaugeValue,
-			ptrBoolToFloat64(sws.Output),
-			d.Instance(),
-			d.MACAddr,
-			deviceName,
-			componentName,
-			strconv.Itoa(swc.ID),
-		)
-		if err != nil {
-			l.Err(err).Msg("encoding metric")
-		}
-		ch <- m
-
-		if sws.AEnergy != nil {
-			// total_energy_watt_hours
-			m, err := prometheus.NewConstMetric(
-				s.totalEnergyWattHoursDesc,
-				prometheus.CounterValue,
-				sws.AEnergy.Total,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(swc.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-		if sws.RetAEnergy != nil {
-			// total_returned_energy_watt_hours
-			m, err := prometheus.NewConstMetric(
-				s.totalReturnedEnergyWattHoursDesc,
-				prometheus.CounterValue,
-				sws.RetAEnergy.Total,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(swc.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-		if sws.Temperature != nil && sws.Temperature.C != nil {
-			// temperature_celsius
-			m, err := prometheus.NewConstMetric(
-				s.temperatureCelsiusDesc,
-				prometheus.GaugeValue,
-				*sws.Temperature.C,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(swc.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-		if sws.Temperature != nil && sws.Temperature.F != nil {
-			// temperature_fahrenheit
-			m, err := prometheus.NewConstMetric(
-				s.temperatureFahrenheitDesc,
-				prometheus.GaugeValue,
-				*sws.Temperature.F,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(swc.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-		if sws.Freq != nil {
-			// network_frequency_hertz
-			m, err := prometheus.NewConstMetric(
-				s.networkFrequencyHertzDesc,
-				prometheus.GaugeValue,
-				*sws.Freq,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(swc.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-		if sws.PF != nil {
-			// power_factor
-			m, err := prometheus.NewConstMetric(
-				s.powerFactorDesc,
-				prometheus.GaugeValue,
-				*sws.PF,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(swc.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-		if sws.Voltage != nil {
-			// voltage
-			m, err := prometheus.NewConstMetric(
-				s.voltageDesc,
-				prometheus.GaugeValue,
-				*sws.Voltage,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(swc.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-		if sws.Current != nil {
-			// current_amperes
-			m, err := prometheus.NewConstMetric(
-				s.currentAmperesDesc,
-				prometheus.GaugeValue,
-				*sws.Current,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(swc.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-		if sws.APower != nil {
-			// instantaneous_active_power_watts
-			m, err := prometheus.NewConstMetric(
-				s.instantaneousActivePowerWattsDesc,
-				prometheus.GaugeValue,
-				*sws.APower,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(swc.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-
-		// component_error
-		// We obviously want to emit metrics with a 1.0 value for any error that is seen. BUT we
-		// want to ensure we send 0.0 for all errors which are inactive to clear any alerts.
-		var seenErrors map[string]struct{}
-		for _, e := range sws.Errors {
-			if seenErrors == nil {
-				// This should be rare so only init if we need it.
-				seenErrors = make(map[string]struct{})
-			}
-			seenErrors[e] = struct{}{}
-			if _, newError := s.knownSwitchErrors.LoadOrStore(e, struct{}{}); newError {
-				// This metric isn't documented. We want to
-				l.Warn().
-					Str("error_code", e).
-					Msg("unknown error code was reported by switch; metric will be retained for future reporting")
-			}
-		}
-		s.knownSwitchErrors.Range(func(eAny, _ any) bool {
-			e := eAny.(string)
-			var eValue float64
-			if _, ok := seenErrors[e]; ok {
-				eValue = 1
-			}
-			m, err := prometheus.NewConstMetric(
-				s.componentErrorDesc,
-				prometheus.GaugeValue,
-				eValue,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(swc.ID),
-				e,
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-			return true
-		})
+		s.collectSwitchComponent(ctx, ch, start, d, swc, sws)
 	}
+
 	for i, cc := range config.Covers {
 		cs := status.Covers[i]
-
-		componentType := "cover"
-		componentName := fmt.Sprintf("%s:%d", componentType, i)
-		if cc.Name != nil {
-			componentName = *cc.Name
-		}
-
-		// cover_position
-		var currentPos float64 = math.NaN()
-		if cs.CurrentPos != nil {
-			currentPos = *cs.CurrentPos
-		}
-		m, err := prometheus.NewConstMetric(
-			s.coverPositionDesc,
-			prometheus.GaugeValue,
-			currentPos,
-			d.Instance(),
-			d.MACAddr,
-			deviceName,
-			componentName,
-			strconv.Itoa(cc.ID),
-		)
-		if err != nil {
-			l.Err(err).Msg("encoding metric")
-		}
-		ch <- m
-
-		// cover_position_control_enabled
-		m, err = prometheus.NewConstMetric(
-			s.coverPositionControlEnabled,
-			prometheus.GaugeValue,
-			ptrBoolToFloat64(cs.PosControl),
-			d.Instance(),
-			d.MACAddr,
-			deviceName,
-			componentName,
-			strconv.Itoa(cc.ID),
-		)
-		if err != nil {
-			l.Err(err).Msg("encoding metric")
-		}
-		ch <- m
-
-		// cover_state
-		for _, state := range coverStates {
-			var stateActive float64
-			if cs.State != nil && *cs.State == state {
-				stateActive = 1
-			}
-			m, err := prometheus.NewConstMetric(
-				s.coverStateDesc,
-				prometheus.GaugeValue,
-				stateActive,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				strconv.Itoa(cc.ID),
-				state,
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-
-		if cs.AEnergy != nil {
-			// total_energy_watt_hours
-			m, err := prometheus.NewConstMetric(
-				s.totalEnergyWattHoursDesc,
-				prometheus.CounterValue,
-				cs.AEnergy.Total,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(cc.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-		if cs.Temperature != nil && cs.Temperature.C != nil {
-			// temperature_celsius
-			m, err := prometheus.NewConstMetric(
-				s.temperatureCelsiusDesc,
-				prometheus.GaugeValue,
-				*cs.Temperature.C,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(cc.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-		if cs.Temperature != nil && cs.Temperature.F != nil {
-			// temperature_fahrenheit
-			m, err := prometheus.NewConstMetric(
-				s.temperatureFahrenheitDesc,
-				prometheus.GaugeValue,
-				*cs.Temperature.F,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(cc.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-		if cs.Freq != nil {
-			// network_frequency_hertz
-			m, err := prometheus.NewConstMetric(
-				s.networkFrequencyHertzDesc,
-				prometheus.GaugeValue,
-				*cs.Freq,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(cc.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-		if cs.PF != nil {
-			// power_factor
-			m, err := prometheus.NewConstMetric(
-				s.powerFactorDesc,
-				prometheus.GaugeValue,
-				*cs.PF,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(cc.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-		if cs.Voltage != nil {
-			// voltage
-			m, err := prometheus.NewConstMetric(
-				s.voltageDesc,
-				prometheus.GaugeValue,
-				*cs.Voltage,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(cc.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-		if cs.Current != nil {
-			// current_amperes
-			m, err := prometheus.NewConstMetric(
-				s.currentAmperesDesc,
-				prometheus.GaugeValue,
-				*cs.Current,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(cc.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-		if cs.APower != nil {
-			// instantaneous_active_power_watts
-			m, err := prometheus.NewConstMetric(
-				s.instantaneousActivePowerWattsDesc,
-				prometheus.GaugeValue,
-				*cs.APower,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(cc.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-
-		// component_error
-		// We obviously want to emit metrics with a 1.0 value for any error that is seen. BUT we
-		// want to ensure we send 0.0 for all errors which are inactive to clear any alerts.
-		var seenErrors map[string]struct{}
-		for _, e := range cs.Errors {
-			if seenErrors == nil {
-				// This should be rare so only init if we need it.
-				seenErrors = make(map[string]struct{})
-			}
-			seenErrors[e] = struct{}{}
-			if _, newError := s.knownCoverErrors.LoadOrStore(e, struct{}{}); newError {
-				// This metric isn't documented. We want to
-				l.Warn().
-					Str("error_code", e).
-					Msg("unknown error code was reported by cover; metric will be retained for future reporting")
-			}
-		}
-		s.knownCoverErrors.Range(func(eAny, _ any) bool {
-			e := eAny.(string)
-			var eValue float64
-			if _, ok := seenErrors[e]; ok {
-				eValue = 1
-			}
-			m, err := prometheus.NewConstMetric(
-				s.componentErrorDesc,
-				prometheus.GaugeValue,
-				eValue,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(cc.ID),
-				e,
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-			return true
-		})
+		s.collectCoverComponent(ctx, ch, start, d, cc, cs)
 	}
 
 	for i, ic := range config.Inputs {
 		is := status.Inputs[i]
+		s.collectInputComponent(ctx, ch, start, d, ic, is)
+	}
 
-		componentType := "input"
-		componentName := fmt.Sprintf("%s:%d", componentType, i)
-		if ic.Name != nil {
-			componentName = *ic.Name
+}
+
+func (s *Server) collectSwitchComponent(
+	ctx context.Context,
+	ch chan<- prometheus.Metric,
+	ts time.Time,
+	d *deviceInfo,
+	swc *shelly.SwitchConfig,
+	sws *shelly.SwitchStatus,
+) {
+	l := log.Ctx(ctx)
+	componentType := "switch"
+	componentName := fmt.Sprintf("%s:%d", componentType, sws.ID)
+	if swc.Name != nil {
+		componentName = *swc.Name
+	}
+
+	// switch_output_on
+	m, err := prometheus.NewConstMetric(
+		s.switchOutputOnDesc,
+		prometheus.GaugeValue,
+		ptrBoolToFloat64(sws.Output),
+		d.instance,
+		d.mac,
+		d.name,
+		componentName,
+		strconv.Itoa(sws.ID),
+	)
+	if err != nil {
+		l.Err(err).Msg("encoding metric")
+	}
+	ch <- m
+
+	if sws.AEnergy != nil {
+		// total_energy_watt_hours
+		m, err := prometheus.NewConstMetric(
+			s.totalEnergyWattHoursDesc,
+			prometheus.CounterValue,
+			sws.AEnergy.Total,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(sws.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+	if sws.RetAEnergy != nil {
+		// total_returned_energy_watt_hours
+		m, err := prometheus.NewConstMetric(
+			s.totalReturnedEnergyWattHoursDesc,
+			prometheus.CounterValue,
+			sws.RetAEnergy.Total,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(sws.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+	if sws.Temperature != nil && sws.Temperature.C != nil {
+		// temperature_celsius
+		m, err := prometheus.NewConstMetric(
+			s.temperatureCelsiusDesc,
+			prometheus.GaugeValue,
+			*sws.Temperature.C,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(sws.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+	if sws.Temperature != nil && sws.Temperature.F != nil {
+		// temperature_fahrenheit
+		m, err := prometheus.NewConstMetric(
+			s.temperatureFahrenheitDesc,
+			prometheus.GaugeValue,
+			*sws.Temperature.F,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(sws.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+	if sws.Freq != nil {
+		// network_frequency_hertz
+		m, err := prometheus.NewConstMetric(
+			s.networkFrequencyHertzDesc,
+			prometheus.GaugeValue,
+			*sws.Freq,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(sws.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+	if sws.PF != nil {
+		// power_factor
+		m, err := prometheus.NewConstMetric(
+			s.powerFactorDesc,
+			prometheus.GaugeValue,
+			*sws.PF,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(sws.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+	if sws.Voltage != nil {
+		// voltage
+		m, err := prometheus.NewConstMetric(
+			s.voltageDesc,
+			prometheus.GaugeValue,
+			*sws.Voltage,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(sws.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+	if sws.Current != nil {
+		// current_amperes
+		m, err := prometheus.NewConstMetric(
+			s.currentAmperesDesc,
+			prometheus.GaugeValue,
+			*sws.Current,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(sws.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+	if sws.APower != nil {
+		// instantaneous_active_power_watts
+		m, err := prometheus.NewConstMetric(
+			s.instantaneousActivePowerWattsDesc,
+			prometheus.GaugeValue,
+			*sws.APower,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(sws.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+
+	// component_error
+	// We obviously want to emit metrics with a 1.0 value for any error that is seen. BUT we
+	// want to ensure we send 0.0 for all errors which are inactive to clear any alerts.
+	var seenErrors map[string]struct{}
+	for _, e := range sws.Errors {
+		if seenErrors == nil {
+			// This should be rare so only init if we need it.
+			seenErrors = make(map[string]struct{})
+		}
+		seenErrors[e] = struct{}{}
+		if _, newError := s.knownSwitchErrors.LoadOrStore(e, struct{}{}); newError {
+			// This metric isn't documented. We want to
+			l.Warn().
+				Str("error_code", e).
+				Msg("unknown error code was reported by switch; metric will be retained for future reporting")
+		}
+	}
+	s.knownSwitchErrors.Range(func(eAny, _ any) bool {
+		e := eAny.(string)
+		var eValue float64
+		if _, ok := seenErrors[e]; ok {
+			eValue = 1
+		}
+		m, err := prometheus.NewConstMetric(
+			s.componentErrorDesc,
+			prometheus.GaugeValue,
+			eValue,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(sws.ID),
+			e,
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+		return true
+	})
+}
+
+func (s *Server) collectCoverComponent(
+	ctx context.Context,
+	ch chan<- prometheus.Metric,
+	ts time.Time,
+	d *deviceInfo,
+	cc *shelly.CoverConfig,
+	cs *shelly.CoverStatus,
+) {
+	l := log.Ctx(ctx)
+	componentType := "cover"
+	componentName := fmt.Sprintf("%s:%d", componentType, cs.ID)
+	if cc.Name != nil {
+		componentName = *cc.Name
+	}
+
+	// cover_position
+	var currentPos float64 = math.NaN()
+	if cs.CurrentPos != nil {
+		currentPos = *cs.CurrentPos
+	}
+	m, err := prometheus.NewConstMetric(
+		s.coverPositionDesc,
+		prometheus.GaugeValue,
+		currentPos,
+		d.instance,
+		d.mac,
+		d.name,
+		componentName,
+		strconv.Itoa(cc.ID),
+	)
+	if err != nil {
+		l.Err(err).Msg("encoding metric")
+	}
+	ch <- m
+
+	// cover_position_control_enabled
+	m, err = prometheus.NewConstMetric(
+		s.coverPositionControlEnabled,
+		prometheus.GaugeValue,
+		ptrBoolToFloat64(cs.PosControl),
+		d.instance,
+		d.mac,
+		d.name,
+		componentName,
+		strconv.Itoa(cc.ID),
+	)
+	if err != nil {
+		l.Err(err).Msg("encoding metric")
+	}
+	ch <- m
+
+	// cover_state
+	for _, state := range coverStates {
+		var stateActive float64
+		if cs.State != nil && *cs.State == state {
+			stateActive = 1
+		}
+		m, err := prometheus.NewConstMetric(
+			s.coverStateDesc,
+			prometheus.GaugeValue,
+			stateActive,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			strconv.Itoa(cc.ID),
+			state,
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+
+	if cs.AEnergy != nil {
+		// total_energy_watt_hours
+		m, err := prometheus.NewConstMetric(
+			s.totalEnergyWattHoursDesc,
+			prometheus.CounterValue,
+			cs.AEnergy.Total,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(cc.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+	if cs.Temperature != nil && cs.Temperature.C != nil {
+		// temperature_celsius
+		m, err := prometheus.NewConstMetric(
+			s.temperatureCelsiusDesc,
+			prometheus.GaugeValue,
+			*cs.Temperature.C,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(cc.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+	if cs.Temperature != nil && cs.Temperature.F != nil {
+		// temperature_fahrenheit
+		m, err := prometheus.NewConstMetric(
+			s.temperatureFahrenheitDesc,
+			prometheus.GaugeValue,
+			*cs.Temperature.F,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(cc.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+	if cs.Freq != nil {
+		// network_frequency_hertz
+		m, err := prometheus.NewConstMetric(
+			s.networkFrequencyHertzDesc,
+			prometheus.GaugeValue,
+			*cs.Freq,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(cc.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+	if cs.PF != nil {
+		// power_factor
+		m, err := prometheus.NewConstMetric(
+			s.powerFactorDesc,
+			prometheus.GaugeValue,
+			*cs.PF,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(cc.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+	if cs.Voltage != nil {
+		// voltage
+		m, err := prometheus.NewConstMetric(
+			s.voltageDesc,
+			prometheus.GaugeValue,
+			*cs.Voltage,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(cc.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+	if cs.Current != nil {
+		// current_amperes
+		m, err := prometheus.NewConstMetric(
+			s.currentAmperesDesc,
+			prometheus.GaugeValue,
+			*cs.Current,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(cc.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+	if cs.APower != nil {
+		// instantaneous_active_power_watts
+		m, err := prometheus.NewConstMetric(
+			s.instantaneousActivePowerWattsDesc,
+			prometheus.GaugeValue,
+			*cs.APower,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(cc.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+
+	// component_error
+	// We obviously want to emit metrics with a 1.0 value for any error that is seen. BUT we
+	// want to ensure we send 0.0 for all errors which are inactive to clear any alerts.
+	var seenErrors map[string]struct{}
+	for _, e := range cs.Errors {
+		if seenErrors == nil {
+			// This should be rare so only init if we need it.
+			seenErrors = make(map[string]struct{})
+		}
+		seenErrors[e] = struct{}{}
+		if _, newError := s.knownCoverErrors.LoadOrStore(e, struct{}{}); newError {
+			// This metric isn't documented. We want to
+			l.Warn().
+				Str("error_code", e).
+				Msg("unknown error code was reported by cover; metric will be retained for future reporting")
+		}
+	}
+	s.knownCoverErrors.Range(func(eAny, _ any) bool {
+		e := eAny.(string)
+		var eValue float64
+		if _, ok := seenErrors[e]; ok {
+			eValue = 1
+		}
+		m, err := prometheus.NewConstMetric(
+			s.componentErrorDesc,
+			prometheus.GaugeValue,
+			eValue,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(cc.ID),
+			e,
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+		return true
+	})
+}
+
+func (s *Server) collectInputComponent(
+	ctx context.Context,
+	ch chan<- prometheus.Metric,
+	ts time.Time,
+	d *deviceInfo,
+	ic *shelly.InputConfig,
+	is *shelly.InputStatus,
+) {
+	l := log.Ctx(ctx)
+	componentType := "input"
+	componentName := fmt.Sprintf("%s:%d", componentType, is.ID)
+	if ic.Name != nil {
+		componentName = *ic.Name
+	}
+
+	// input_enabled
+	if ic.Enable != nil {
+		m, err := prometheus.NewConstMetric(
+			s.inputEnabledDesc,
+			prometheus.GaugeValue,
+			ptrBoolToFloat64(ic.Enable),
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			strconv.Itoa(ic.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+
+	// input_state_on
+	if is.State != nil {
+		m, err := prometheus.NewConstMetric(
+			s.inputStateOnDesc,
+			prometheus.GaugeValue,
+			ptrBoolToFloat64(is.State),
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			strconv.Itoa(ic.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+
+	// input_percent
+	if is.Percent != nil {
+		m, err := prometheus.NewConstMetric(
+			s.inputPercentDesc,
+			prometheus.GaugeValue,
+			*is.Percent,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			strconv.Itoa(ic.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+	// input_xpercent
+	if is.XPercent != nil {
+		m, err := prometheus.NewConstMetric(
+			s.inputXPercentDesc,
+			prometheus.GaugeValue,
+			*is.XPercent,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			strconv.Itoa(ic.ID),
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+	}
+
+	// component_error
+	// We obviously want to emit metrics with a 1.0 value for any error that is seen. BUT we
+	// want to ensure we send 0.0 for all errors which are inactive to clear any alerts.
+	var seenErrors map[string]struct{}
+	for _, e := range is.Errors {
+		if seenErrors == nil {
+			// This should be rare so only init if we need it.
+			seenErrors = make(map[string]struct{})
+		}
+		seenErrors[e] = struct{}{}
+		if _, newError := s.knownInputErrors.LoadOrStore(e, struct{}{}); newError {
+			// This metric isn't documented. We want to
+			l.Warn().
+				Str("error_code", e).
+				Msg("unknown error code was reported by switch; metric will be retained for future reporting")
+		}
+	}
+	s.knownInputErrors.Range(func(eAny, _ any) bool {
+		e := eAny.(string)
+		var eValue float64
+		if _, ok := seenErrors[e]; ok {
+			eValue = 1
+		}
+		m, err := prometheus.NewConstMetric(
+			s.componentErrorDesc,
+			prometheus.GaugeValue,
+			eValue,
+			d.instance,
+			d.mac,
+			d.name,
+			componentName,
+			componentType,
+			strconv.Itoa(ic.ID),
+			e,
+		)
+		if err != nil {
+			l.Err(err).Msg("encoding metric")
+		}
+		ch <- m
+		return true
+	})
+}
+
+func (s *Server) collectCached(ctx context.Context, ch chan<- prometheus.Metric) {
+	cached := s.notificationCache.getStatuses()
+	for _, c := range cached {
+		ctx := log.Ctx(ctx).With().
+			Str("src", c.Frame.Src).
+			Logger().WithContext(ctx)
+		ts := time.Unix(
+			int64(c.Status.TS),
+			int64(c.Status.TS-math.Floor(c.Status.TS)*float64(time.Second)),
+		)
+		d := &deviceInfo{
+			name:     c.Frame.Src,
+			mac:      macFromName(c.Frame.Src),
+			instance: c.Frame.Src,
+		}
+		for _, sws := range c.Status.Switches {
+			swc := &shelly.SwitchConfig{
+				ID:   sws.ID,
+				Name: shelly.StrPtr(fmt.Sprintf("switch:%d", sws.ID)),
+			}
+			s.collectSwitchComponent(ctx, ch, ts, d, swc, sws)
 		}
 
-		// input_enabled
-		if ic.Enable != nil {
-			m, err := prometheus.NewConstMetric(
-				s.inputEnabledDesc,
-				prometheus.GaugeValue,
-				ptrBoolToFloat64(ic.Enable),
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				strconv.Itoa(ic.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
+		for _, cs := range c.Status.Covers {
+			cc := &shelly.CoverConfig{
+				ID:   cs.ID,
+				Name: shelly.StrPtr(fmt.Sprintf("cover:%d", cs.ID)),
 			}
-			ch <- m
+			s.collectCoverComponent(ctx, ch, ts, d, cc, cs)
 		}
 
-		// input_state_on
-		if is.State != nil {
-			m, err := prometheus.NewConstMetric(
-				s.inputStateOnDesc,
-				prometheus.GaugeValue,
-				ptrBoolToFloat64(is.State),
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				strconv.Itoa(ic.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
+		for _, is := range c.Status.Inputs {
+			ic := &shelly.InputConfig{
+				ID:   is.ID,
+				Name: shelly.StrPtr(fmt.Sprintf("input:%d", is.ID)),
 			}
-			ch <- m
+			s.collectInputComponent(ctx, ch, ts, d, ic, is)
 		}
-
-		// input_percent
-		if is.Percent != nil {
-			m, err := prometheus.NewConstMetric(
-				s.inputPercentDesc,
-				prometheus.GaugeValue,
-				*is.Percent,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				strconv.Itoa(ic.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-		// input_xpercent
-		if is.XPercent != nil {
-			m, err := prometheus.NewConstMetric(
-				s.inputXPercentDesc,
-				prometheus.GaugeValue,
-				*is.XPercent,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				strconv.Itoa(ic.ID),
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-		}
-
-		// component_error
-		// We obviously want to emit metrics with a 1.0 value for any error that is seen. BUT we
-		// want to ensure we send 0.0 for all errors which are inactive to clear any alerts.
-		var seenErrors map[string]struct{}
-		for _, e := range is.Errors {
-			if seenErrors == nil {
-				// This should be rare so only init if we need it.
-				seenErrors = make(map[string]struct{})
-			}
-			seenErrors[e] = struct{}{}
-			if _, newError := s.knownInputErrors.LoadOrStore(e, struct{}{}); newError {
-				// This metric isn't documented. We want to
-				l.Warn().
-					Str("error_code", e).
-					Msg("unknown error code was reported by switch; metric will be retained for future reporting")
-			}
-		}
-		s.knownInputErrors.Range(func(eAny, _ any) bool {
-			e := eAny.(string)
-			var eValue float64
-			if _, ok := seenErrors[e]; ok {
-				eValue = 1
-			}
-			m, err := prometheus.NewConstMetric(
-				s.componentErrorDesc,
-				prometheus.GaugeValue,
-				eValue,
-				d.Instance(),
-				d.MACAddr,
-				deviceName,
-				componentName,
-				componentType,
-				strconv.Itoa(ic.ID),
-				e,
-			)
-			if err != nil {
-				l.Err(err).Msg("encoding metric")
-			}
-			ch <- m
-			return true
-		})
 	}
 }
 
@@ -950,4 +1044,14 @@ func ptrBoolToFloat64(b *bool) float64 {
 		return 0
 	}
 	return 1
+}
+
+var reMACFromName = regexp.MustCompile(`^shelly.+-([A-Za-z0-9]{12})$`)
+
+func macFromName(name string) string {
+	m := reMACFromName.FindStringSubmatch("shellyplugus-d4d4da092eb4")
+	if len(m) == 2 {
+		return m[1]
+	}
+	return ""
 }

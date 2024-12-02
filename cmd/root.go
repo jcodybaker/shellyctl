@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/jcodybaker/shellyctl/pkg/logcompat"
 	"github.com/jcodybaker/shellyctl/pkg/outputter"
@@ -34,6 +35,7 @@ func init() {
 	rootCmd.PersistentFlags().String("log-level", "warn", "threshold for outputing logs: trace, debug, info, warn, error, fatal, panic")
 	rootCmd.PersistentFlags().StringP("output-format", "o", "text", "desired output format: json, min-json, yaml, text, log")
 	rootCmd.PersistentFlags().String("config", "", "path to config file. format will be determined by extension (.yaml, .json, .toml, .ini valid)")
+	rootCmd.PersistentFlags().Duration("rpc-timeout", 30*time.Second, "timeout for individual RPC requests. NOTE: if you're using mqtt-retain you'll want to bump this to the wake-period used by the device (commonly 10m)")
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))

@@ -64,6 +64,8 @@ var notificationsCmd = &cobra.Command{
 					Str("dst", fsn.Frame.Dst).
 					Str("method", fsn.Frame.Method).
 					Any("msg", fsn.Status).
+					Float64("timestamp", fsn.Status.TS).
+					Str("raw", string(fsn.Frame.Params)).
 					Msg("got NotifyFullStatus")
 				Output(
 					ctx,
@@ -78,6 +80,8 @@ var notificationsCmd = &cobra.Command{
 					Str("dst", sn.Frame.Dst).
 					Str("method", sn.Frame.Method).
 					Any("msg", sn.Status).
+					Float64("timestamp", sn.Status.TS).
+					Str("raw", string(sn.Frame.Params)).
 					Msg("got NotifyStatus")
 				Output(
 					ctx,
