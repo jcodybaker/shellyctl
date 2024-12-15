@@ -735,7 +735,7 @@ shelly_status_voltage{component="switch",component_name="Lift Pump",device_name=
 			d1.AddMockResponse("Shelly.GetStatus", nil, json.RawMessage(tc.d1Status))
 			d1.AddMockResponse("Shelly.GetConfig", nil, json.RawMessage(tc.d1Config))
 
-			ps := NewServer(ctx, td.Discoverer)
+			_, ps := NewServer(ctx, td.Discoverer)
 			metricserver := httptest.NewServer(ps)
 			t.Cleanup(metricserver.Close)
 

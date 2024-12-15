@@ -8,7 +8,6 @@ import (
 	"github.com/jcodybaker/shellyctl/pkg/discovery"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func init() {
@@ -39,10 +38,6 @@ var notificationsCmd = &cobra.Command{
 		dOpts, err := discoveryOptionsFromFlags(cmd.Flags())
 		if err != nil {
 			l.Fatal().Err(err).Msg("parsing flags")
-		}
-		mqttDevices := viper.GetStringSlice("mqtt-device")
-		if len(mqttDevices) == 0 && !viper.IsSet("mqtt-topic") {
-			dOpts = append(dOpts, discovery.WithMQTTTopicSubscriptions([]string{"+/events/rpc"}))
 		}
 		disc := discovery.NewDiscoverer(dOpts...)
 		fsnChan := disc.GetFullStatusNotifications(50)

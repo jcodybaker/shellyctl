@@ -56,7 +56,14 @@ var (
 	coverStates = []string{"open", "closed", "opening", "closing", "stopped", "calibrating"}
 )
 
-func NewServer(ctx context.Context, discoverer *discovery.Discoverer, opts ...Option) http.Handler {
+func NewServer(
+	ctx context.Context,
+	discoverer *discovery.Discoverer,
+	opts ...Option,
+) (
+	func(ctx context.Context),
+	http.Handler,
+) {
 	s := &Server{
 		discoverer:           discoverer,
 		promReg:              prometheus.NewRegistry(),
@@ -71,7 +78,7 @@ func NewServer(ctx context.Context, discoverer *discovery.Discoverer, opts ...Op
 		o(s)
 	}
 	if s.notificationCache == nil {
-		s.notificationCache = newNotificationCache(defaultNotificationCacheTTL)
+		s.notificationCache = newNotificationCache(defaultNotificationCacheTTL, s.discoverer)
 	}
 	s.Handler = promhttp.HandlerFor(s.promReg, promhttp.HandlerOpts{})
 	s.initDescs()
@@ -85,7 +92,7 @@ func NewServer(ctx context.Context, discoverer *discovery.Discoverer, opts ...Op
 	for _, e := range baseKnownCoverErrors {
 		s.knownCoverErrors.Store(e, struct{}{})
 	}
-	return s
+	return s.notificationCache.consumer, s
 }
 
 type Server struct {
@@ -99,7 +106,8 @@ type Server struct {
 	deviceTimeout        time.Duration
 	scrapeDurationWaring time.Duration
 
-	notificationCache *notificationCache
+	notificationCacheTTL time.Duration
+	notificationCache    *notificationCache
 
 	switchOutputOnDesc                *prometheus.Desc
 	coverPositionDesc                 *prometheus.Desc
@@ -299,6 +307,11 @@ func (s *Server) Collect(ch chan<- prometheus.Metric) {
 			s.collectDevice(ctx, d, ch)
 		}()
 	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.collectCached(s.ctx, ch)
+	}()
 }
 
 type deviceInfo struct {
@@ -386,10 +399,11 @@ func (s *Server) collectSwitchComponent(
 	}
 
 	// switch_output_on
-	m, err := prometheus.NewConstMetric(
+	m, err := metricWithOptionalTimestamp(
 		s.switchOutputOnDesc,
 		prometheus.GaugeValue,
 		ptrBoolToFloat64(sws.Output),
+		ts,
 		d.instance,
 		d.mac,
 		d.name,
@@ -403,10 +417,11 @@ func (s *Server) collectSwitchComponent(
 
 	if sws.AEnergy != nil {
 		// total_energy_watt_hours
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.totalEnergyWattHoursDesc,
 			prometheus.CounterValue,
 			sws.AEnergy.Total,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -421,10 +436,11 @@ func (s *Server) collectSwitchComponent(
 	}
 	if sws.RetAEnergy != nil {
 		// total_returned_energy_watt_hours
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.totalReturnedEnergyWattHoursDesc,
 			prometheus.CounterValue,
 			sws.RetAEnergy.Total,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -439,10 +455,11 @@ func (s *Server) collectSwitchComponent(
 	}
 	if sws.Temperature != nil && sws.Temperature.C != nil {
 		// temperature_celsius
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.temperatureCelsiusDesc,
 			prometheus.GaugeValue,
 			*sws.Temperature.C,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -457,10 +474,11 @@ func (s *Server) collectSwitchComponent(
 	}
 	if sws.Temperature != nil && sws.Temperature.F != nil {
 		// temperature_fahrenheit
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.temperatureFahrenheitDesc,
 			prometheus.GaugeValue,
 			*sws.Temperature.F,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -475,10 +493,11 @@ func (s *Server) collectSwitchComponent(
 	}
 	if sws.Freq != nil {
 		// network_frequency_hertz
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.networkFrequencyHertzDesc,
 			prometheus.GaugeValue,
 			*sws.Freq,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -493,10 +512,11 @@ func (s *Server) collectSwitchComponent(
 	}
 	if sws.PF != nil {
 		// power_factor
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.powerFactorDesc,
 			prometheus.GaugeValue,
 			*sws.PF,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -511,10 +531,11 @@ func (s *Server) collectSwitchComponent(
 	}
 	if sws.Voltage != nil {
 		// voltage
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.voltageDesc,
 			prometheus.GaugeValue,
 			*sws.Voltage,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -529,10 +550,11 @@ func (s *Server) collectSwitchComponent(
 	}
 	if sws.Current != nil {
 		// current_amperes
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.currentAmperesDesc,
 			prometheus.GaugeValue,
 			*sws.Current,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -547,10 +569,11 @@ func (s *Server) collectSwitchComponent(
 	}
 	if sws.APower != nil {
 		// instantaneous_active_power_watts
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.instantaneousActivePowerWattsDesc,
 			prometheus.GaugeValue,
 			*sws.APower,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -587,10 +610,11 @@ func (s *Server) collectSwitchComponent(
 		if _, ok := seenErrors[e]; ok {
 			eValue = 1
 		}
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.componentErrorDesc,
 			prometheus.GaugeValue,
 			eValue,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -627,10 +651,11 @@ func (s *Server) collectCoverComponent(
 	if cs.CurrentPos != nil {
 		currentPos = *cs.CurrentPos
 	}
-	m, err := prometheus.NewConstMetric(
+	m, err := metricWithOptionalTimestamp(
 		s.coverPositionDesc,
 		prometheus.GaugeValue,
 		currentPos,
+		ts,
 		d.instance,
 		d.mac,
 		d.name,
@@ -643,10 +668,11 @@ func (s *Server) collectCoverComponent(
 	ch <- m
 
 	// cover_position_control_enabled
-	m, err = prometheus.NewConstMetric(
+	m, err = metricWithOptionalTimestamp(
 		s.coverPositionControlEnabled,
 		prometheus.GaugeValue,
 		ptrBoolToFloat64(cs.PosControl),
+		ts,
 		d.instance,
 		d.mac,
 		d.name,
@@ -664,10 +690,11 @@ func (s *Server) collectCoverComponent(
 		if cs.State != nil && *cs.State == state {
 			stateActive = 1
 		}
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.coverStateDesc,
 			prometheus.GaugeValue,
 			stateActive,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -683,10 +710,11 @@ func (s *Server) collectCoverComponent(
 
 	if cs.AEnergy != nil {
 		// total_energy_watt_hours
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.totalEnergyWattHoursDesc,
 			prometheus.CounterValue,
 			cs.AEnergy.Total,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -701,10 +729,11 @@ func (s *Server) collectCoverComponent(
 	}
 	if cs.Temperature != nil && cs.Temperature.C != nil {
 		// temperature_celsius
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.temperatureCelsiusDesc,
 			prometheus.GaugeValue,
 			*cs.Temperature.C,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -719,10 +748,11 @@ func (s *Server) collectCoverComponent(
 	}
 	if cs.Temperature != nil && cs.Temperature.F != nil {
 		// temperature_fahrenheit
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.temperatureFahrenheitDesc,
 			prometheus.GaugeValue,
 			*cs.Temperature.F,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -737,10 +767,11 @@ func (s *Server) collectCoverComponent(
 	}
 	if cs.Freq != nil {
 		// network_frequency_hertz
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.networkFrequencyHertzDesc,
 			prometheus.GaugeValue,
 			*cs.Freq,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -755,10 +786,11 @@ func (s *Server) collectCoverComponent(
 	}
 	if cs.PF != nil {
 		// power_factor
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.powerFactorDesc,
 			prometheus.GaugeValue,
 			*cs.PF,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -773,10 +805,11 @@ func (s *Server) collectCoverComponent(
 	}
 	if cs.Voltage != nil {
 		// voltage
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.voltageDesc,
 			prometheus.GaugeValue,
 			*cs.Voltage,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -791,10 +824,11 @@ func (s *Server) collectCoverComponent(
 	}
 	if cs.Current != nil {
 		// current_amperes
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.currentAmperesDesc,
 			prometheus.GaugeValue,
 			*cs.Current,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -809,10 +843,11 @@ func (s *Server) collectCoverComponent(
 	}
 	if cs.APower != nil {
 		// instantaneous_active_power_watts
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.instantaneousActivePowerWattsDesc,
 			prometheus.GaugeValue,
 			*cs.APower,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -849,10 +884,11 @@ func (s *Server) collectCoverComponent(
 		if _, ok := seenErrors[e]; ok {
 			eValue = 1
 		}
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.componentErrorDesc,
 			prometheus.GaugeValue,
 			eValue,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -886,10 +922,11 @@ func (s *Server) collectInputComponent(
 
 	// input_enabled
 	if ic.Enable != nil {
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.inputEnabledDesc,
 			prometheus.GaugeValue,
 			ptrBoolToFloat64(ic.Enable),
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -904,10 +941,11 @@ func (s *Server) collectInputComponent(
 
 	// input_state_on
 	if is.State != nil {
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.inputStateOnDesc,
 			prometheus.GaugeValue,
 			ptrBoolToFloat64(is.State),
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -922,10 +960,11 @@ func (s *Server) collectInputComponent(
 
 	// input_percent
 	if is.Percent != nil {
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.inputPercentDesc,
 			prometheus.GaugeValue,
 			*is.Percent,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -939,10 +978,11 @@ func (s *Server) collectInputComponent(
 	}
 	// input_xpercent
 	if is.XPercent != nil {
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.inputXPercentDesc,
 			prometheus.GaugeValue,
 			*is.XPercent,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -978,10 +1018,11 @@ func (s *Server) collectInputComponent(
 		if _, ok := seenErrors[e]; ok {
 			eValue = 1
 		}
-		m, err := prometheus.NewConstMetric(
+		m, err := metricWithOptionalTimestamp(
 			s.componentErrorDesc,
 			prometheus.GaugeValue,
 			eValue,
+			ts,
 			d.instance,
 			d.mac,
 			d.name,
@@ -1054,4 +1095,11 @@ func macFromName(name string) string {
 		return m[1]
 	}
 	return ""
+}
+
+func metricWithOptionalTimestamp(desc *prometheus.Desc, valueType prometheus.ValueType, value float64, ct time.Time, labelValues ...string) (prometheus.Metric, error) {
+	if ct.IsZero() {
+		return prometheus.NewConstMetric(desc, valueType, value, labelValues...)
+	}
+	return prometheus.NewConstMetricWithCreatedTimestamp(desc, valueType, value, ct, labelValues...)
 }

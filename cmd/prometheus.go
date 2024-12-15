@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/jcodybaker/shellyctl/pkg/discovery"
@@ -60,7 +61,7 @@ var prometheusCmd = &cobra.Command{
 			l.Fatal().Err(err).Msg("adding devices")
 		}
 
-		ps := promserver.NewServer(
+		consumer, ps := promserver.NewServer(
 			ctx,
 			disc,
 			promserver.WithPrometheusNamespace(viper.GetString("prometheus-namespace")),
@@ -82,9 +83,16 @@ var prometheusCmd = &cobra.Command{
 				l.Err(err).Msg("shutting down http server")
 			}
 		}()
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			consumer(ctx)
+		}()
 		l.Info().Str("bind_address", hs.Addr).Msg("starting metrics server")
 		if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			l.Err(err).Msg("starting http server")
 		}
+		wg.Wait()
 	},
 }

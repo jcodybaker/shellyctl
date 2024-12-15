@@ -25,10 +25,11 @@ type timestampedStatus struct {
 	discovery.StatusNotification
 }
 
-func newNotificationCache(ttl time.Duration) *notificationCache {
+func newNotificationCache(ttl time.Duration, d *discovery.Discoverer) *notificationCache {
 	return &notificationCache{
-		statuses: list.New(),
-		ttl:      ttl,
+		statuses:   list.New(),
+		ttl:        ttl,
+		discoverer: d,
 	}
 }
 
