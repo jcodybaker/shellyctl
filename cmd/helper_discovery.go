@@ -174,6 +174,10 @@ func discoveryOptionsFromFlags(flags *pflag.FlagSet) (opts []discovery.Discovere
 	// hosts := viper.GetStringSlice("host")
 	// bleDevices := viper.GetStringSlice("ble-device")
 	// mqttDevices := viper.GetStringSlice("mqtt-device")
+	mqttDevices := viper.GetStringSlice("mqtt-device")
+	if len(mqttDevices) == 0 && !viper.IsSet("mqtt-topic") {
+		opts = append(opts, discovery.WithMQTTTopicSubscriptions([]string{"+/events/rpc"}))
+	}
 	mdnsSearch := viper.GetBool("mdns-search")
 	bleSearch := viper.GetBool("ble-search")
 	mqttSearch := viper.GetBool("mqtt-search")
