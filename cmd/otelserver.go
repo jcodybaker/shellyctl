@@ -79,8 +79,8 @@ var otelCmd = &cobra.Command{
 		switch viper.GetString("otel-exporter-protocol") {
 		case "grpc":
 			gOpts := []otlpmetricgrpc.Option{}
-			if viper.IsSet("otel-exporter-oltp-metrics-endpoint") {
-				v := viper.GetString("otel-exporter-oltp-metrics-endpoint")
+			if viper.IsSet("otel-exporter-endpoint") {
+				v := viper.GetString("otel-exporter-endpoint")
 				if strings.Contains(v, "://") {
 					gOpts = append(gOpts, otlpmetricgrpc.WithEndpointURL(v))
 				} else {
@@ -116,8 +116,8 @@ var otelCmd = &cobra.Command{
 			hOpts = append(hOpts, otlpmetrichttp.WithInsecure())
 			fallthrough
 		case "https":
-			if viper.IsSet("otel-exporter-oltp-metrics-endpoint") {
-				v := viper.GetString("otel-exporter-oltp-metrics-endpoint")
+			if viper.IsSet("otel-exporter-endpoint") {
+				v := viper.GetString("otel-exporter-endpoint")
 				if strings.Contains(v, "://") {
 					hOpts = append(hOpts, otlpmetrichttp.WithEndpointURL(v))
 				} else {
@@ -164,6 +164,8 @@ var otelCmd = &cobra.Command{
 				l.Fatal().Err(err).Msg("creating prometheus otel exporter")
 			}
 			opts = append(opts, otelserver.WithMetricsReader(e))
+		default:
+			l.Fatal().Str("protocol", viper.GetString("otel-exporter-protocol")).Msg("unknown protocol")
 		}
 		os := otelserver.NewServer(ctx, disc, opts...)
 		if err := os.Run(ctx); err != nil {
