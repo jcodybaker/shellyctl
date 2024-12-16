@@ -40,12 +40,12 @@ func NewServer(
 		discoverer: discoverer,
 		stopWait:   DefaultStopWait,
 	}
-
-	s.meterP = sdkMetric.NewMeterProvider(s.meterProviderOptions...)
-	s.onStop = append(s.onStop, s.meterP.Shutdown)
 	for _, o := range opts {
 		o(s)
 	}
+	s.meterP = sdkMetric.NewMeterProvider(s.meterProviderOptions...)
+	s.onStop = append(s.onStop, s.meterP.Shutdown)
+
 	if s.meter == nil {
 		s.meter = s.meterP.Meter(DefeaultMeterName)
 	}
