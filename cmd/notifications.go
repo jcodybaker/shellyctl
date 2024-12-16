@@ -42,6 +42,7 @@ var notificationsCmd = &cobra.Command{
 		disc := discovery.NewDiscoverer(dOpts...)
 		fsnChan := disc.GetFullStatusNotifications(50)
 		snChan := disc.GetStatusNotifications(50)
+		enChan := disc.GetEventNotifications(50)
 		if err := disc.MQTTConnect(ctx); err != nil {
 			l.Fatal().Err(err).Msg("connecting to MQTT broker")
 		}
@@ -84,6 +85,22 @@ var notificationsCmd = &cobra.Command{
 					"notification",
 					sn.Status,
 					sn.Frame.Params,
+				)
+			case en := <-enChan:
+				log.Debug().
+					Str("src", en.Frame.Src).
+					Str("dst", en.Frame.Dst).
+					Str("method", en.Frame.Method).
+					Any("msg", en.Event).
+					Float64("timestamp", en.Event.TS).
+					Str("raw", string(en.Frame.Params)).
+					Msg("got NotifyStatus")
+				Output(
+					ctx,
+					fmt.Sprintf("Received NotifyStatus frame from %s", en.Frame.Src),
+					"notification",
+					en.Event,
+					en.Frame.Params,
 				)
 			}
 		}

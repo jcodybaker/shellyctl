@@ -11,7 +11,6 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/jcodybaker/go-shelly"
 	"github.com/mongoose-os/mos/common/mgrpc"
-	"github.com/mongoose-os/mos/common/mgrpc/frame"
 )
 
 func (d *Discoverer) MQTTConnect(ctx context.Context) error {
@@ -38,9 +37,7 @@ func (d *Discoverer) MQTTConnect(ctx context.Context) error {
 		s := mgrpc.Serve(ctx, c)
 		s.AddHandler("NotifyStatus", d.statusNotificationHandler)
 		s.AddHandler("NotifyFullStatus", d.fullStatusNotificationHandler)
-		s.AddHandler("NotifyEvents", func(mr mgrpc.MgRPC, f *frame.Frame) *frame.Frame {
-			return nil
-		})
+		s.AddHandler("NotifyEvent", d.eventNotificationHandler)
 	}
 	return nil
 }

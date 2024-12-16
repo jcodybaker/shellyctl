@@ -63,6 +63,7 @@ type Discoverer struct {
 
 	statusChan     chan StatusNotification
 	fullStatusChan chan StatusNotification
+	eventChan      chan EventNotification
 }
 
 // AddDeviceByAddress attempts to parse a user-provided URI and add the device.
