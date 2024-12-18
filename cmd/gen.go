@@ -22,6 +22,52 @@ var (
 		},
 	}
 
+	btHome = &gencobra.Component{
+		Parent: &cobra.Command{
+			GroupID: "Component RPCs",
+			Use:     "bthome",
+			Aliases: []string{"bt-home"},
+			Short:   "RPCs related to BTHome",
+		},
+		Requests: []shelly.RPCRequestBody{
+			&shelly.BTHomeAddDeviceRequest{},
+			&shelly.BTHomeDeleteDeviceRequest{},
+			&shelly.BTHomeAddSensorRequest{},
+			&shelly.BTHomeDeleteSensorRequest{},
+			&shelly.BTHomeStartDeviceDiscoveryRequest{},
+			&shelly.BTHomeGetObjectInfosRequest{},
+		},
+	}
+
+	btHomeDevice = &gencobra.Component{
+		Parent: &cobra.Command{
+			GroupID: "Component RPCs",
+			Use:     "bthome-device",
+			Aliases: []string{"bt-home-device"},
+			Short:   "RPCs related to BTHome devices",
+		},
+		Requests: []shelly.RPCRequestBody{
+			&shelly.BTHomeDeviceGetStatusRequest{},
+			&shelly.BTHomeDeviceGetConfigRequest{},
+			&shelly.BTHomeDeviceSetConfigRequest{},
+			&shelly.BTHomeDeviceGetKnownObjectsRequest{},
+		},
+	}
+
+	btHomeSensor = &gencobra.Component{
+		Parent: &cobra.Command{
+			GroupID: "Component RPCs",
+			Use:     "bthome-sensor",
+			Aliases: []string{"bt-home-sensor"},
+			Short:   "RPCs related to BTHome sensors",
+		},
+		Requests: []shelly.RPCRequestBody{
+			&shelly.BTHomeSensorGetConfigRequest{},
+			&shelly.BTHomeSensorGetStatusRequest{},
+			&shelly.BTHomeSensorSetConfigRequest{},
+		},
+	}
+
 	cloudComponent = &gencobra.Component{
 		Parent: &cobra.Command{
 			GroupID: "Component RPCs",
@@ -176,6 +222,7 @@ var (
 			// ShellySetAuth requires some calculation as it depends on the device ID.
 			// It is implemented in cmd/shelly.go.
 			// &shelly.ShellySetAuthRequest{},
+			&shelly.ShellyGetComponentsRequest{},
 		},
 	}
 
@@ -235,6 +282,9 @@ var (
 
 	components = []*gencobra.Component{
 		bleComponent,
+		btHome,
+		btHomeDevice,
+		btHomeSensor,
 		cloudComponent,
 		coverComponent,
 		devicePowerComponent,
