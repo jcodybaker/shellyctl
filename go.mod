@@ -9,7 +9,7 @@ require (
 	github.com/eclipse/paho.mqtt.golang v1.4.3
 	github.com/go-logr/zerologr v1.2.3
 	github.com/hashicorp/mdns v1.0.5
-	github.com/jcodybaker/go-shelly v0.0.0-20241201205537-11afe2ce78e6
+	github.com/jcodybaker/go-shelly v0.0.0-20241218022911-c6a1deacb6e1
 	github.com/mongoose-os/mos v0.0.0-20230313140341-b44964e63a92
 	github.com/prometheus/client_golang v1.20.5
 	github.com/rs/zerolog v1.31.0
