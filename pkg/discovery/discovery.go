@@ -61,9 +61,7 @@ type Discoverer struct {
 	// so mDNS/BLE can opperate simultaneously.
 	ioLock sync.Mutex
 
-	statusChan     chan StatusNotification
-	fullStatusChan chan StatusNotification
-	eventChan      chan EventNotification
+	notifications
 }
 
 // AddDeviceByAddress attempts to parse a user-provided URI and add the device.
@@ -124,9 +122,10 @@ func (d *Discoverer) AddDeviceByAddress(ctx context.Context, addr string, opts .
 	}
 
 	dev := &Device{
-		uri:          u.String(),
-		source:       sourceManual,
-		authCallback: authCallback,
+		uri:           u.String(),
+		source:        sourceManual,
+		authCallback:  authCallback,
+		notifications: &d.notifications,
 	}
 
 	if err = dev.resolveSpecs(ctx); err != nil {
@@ -139,10 +138,11 @@ func (d *Discoverer) AddDeviceByAddress(ctx context.Context, addr string, opts .
 
 func (d *Discoverer) AddMQTTDevice(ctx context.Context, topicPrefix string, opts ...DeviceOption) (*Device, error) {
 	dev := &Device{
-		source:       sourceManual,
-		authCallback: d.authCallback,
-		mqttPrefix:   topicPrefix,
-		mqttClient:   d.mqttClient,
+		source:        sourceManual,
+		authCallback:  d.authCallback,
+		mqttPrefix:    topicPrefix,
+		mqttClient:    d.mqttClient,
+		notifications: &d.notifications,
 	}
 
 	if err := dev.resolveSpecs(ctx); err != nil {

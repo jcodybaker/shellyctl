@@ -14,12 +14,13 @@ import (
 	"strings"
 	"sync"
 
+	"math/rand"
+
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/jcodybaker/shellyctl/pkg/discovery"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"golang.org/x/exp/rand"
 	"golang.org/x/term"
 )
 
@@ -46,6 +47,12 @@ func discoveryFlags(f *pflag.FlagSet, opts discoveryFlagsOptions) {
 			"If a URL scheme is provided, only `http` and `https` schemes are supported.\n"+
 			"mDNS names must be within the zone specified by the `--mdns-zone` flag (default `local`).\n"+
 			"URL formatted auth is supported (ex. `http://admin:password@1.2.3.4/`)")
+
+	f.String(
+		"local-id",
+		"shellyctl-${PID}",
+		"local src id to use.  ${PID} will be replaced with the current process id, ${RANDOM} with a random int",
+	)
 
 	f.Bool(
 		"mdns-search",

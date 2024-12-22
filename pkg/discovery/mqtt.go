@@ -35,9 +35,7 @@ func (d *Discoverer) MQTTConnect(ctx context.Context) error {
 			return fmt.Errorf("subscribing to MQTT topic %q: %w", t, err)
 		}
 		s := mgrpc.Serve(ctx, c)
-		s.AddHandler("NotifyStatus", d.statusNotificationHandler)
-		s.AddHandler("NotifyFullStatus", d.fullStatusNotificationHandler)
-		s.AddHandler("NotifyEvent", d.eventNotificationHandler)
+		d.notifications.register(s)
 	}
 	return nil
 }

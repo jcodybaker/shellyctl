@@ -5,9 +5,11 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/jcodybaker/go-shelly"
 	"github.com/jcodybaker/shellyctl/pkg/discovery"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 func init() {
@@ -49,6 +51,45 @@ var notificationsCmd = &cobra.Command{
 		if err := discoveryAddDevices(ctx, disc); err != nil {
 			l.Fatal().Err(err).Msg("adding devices")
 		}
+
+		for _, d := range disc.AllDevices() {
+			d := d
+			m, err := d.Open(ctx)
+			if err != nil {
+				if viper.GetBool("skip-failed-hosts") {
+					l.Warn().Err(err).
+						Str("instance", d.Instance()).
+						Str("name", d.BestName()).
+						Msg("failed to open device; skipping")
+					continue
+				} else {
+					l.Fatal().Err(err).
+						Str("instance", d.Instance()).
+						Str("name", d.BestName()).
+						Msg("failed to open device")
+				}
+			}
+			// We need to make an initial request for websockets
+			r := &shelly.ShellyGetConfigRequest{}
+			_, respF, err := r.Do(ctx, m, d.AuthCallback(ctx))
+			if err != nil {
+				if viper.GetBool("skip-failed-hosts") {
+					l.Warn().Err(err).
+						Str("instance", d.Instance()).
+						Str("name", d.BestName()).
+						Msg("failed to open device; skipping")
+					continue
+				} else {
+					l.Fatal().Err(err).
+						Str("instance", d.Instance()).
+						Str("name", d.BestName()).
+						Msg("failed to open device")
+				}
+			}
+			log.Info().Int64("id", respF.ID).Msg("connection established")
+			defer m.Disconnect(ctx)
+		}
+		log.Info().Msg("beginning notification announcements")
 		for {
 			select {
 			case <-ctx.Done():

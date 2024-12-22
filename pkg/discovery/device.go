@@ -3,6 +3,9 @@ package discovery
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,6 +15,7 @@ import (
 	"github.com/mongoose-os/mos/common/mgrpc/codec"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 )
 
 type AuthCallback func(ctx context.Context, desc string) (pw string, err error)
@@ -29,6 +33,8 @@ type Device struct {
 
 	mqttPrefix string
 	mqttClient mqtt.Client
+
+	notifications *notifications
 }
 
 // Open creates an mongoose rpc channel to the device.
@@ -39,6 +45,7 @@ func (d *Device) Open(ctx context.Context) (mgrpc.MgRPC, error) {
 		if err := d.ble.open(ctx, d.MACAddr); err != nil {
 			return nil, err
 		}
+		d.notifications.register(d.ble)
 		return d.ble, nil
 	}
 	if d.mqttClient != nil && d.mqttPrefix != "" {
@@ -46,20 +53,25 @@ func (d *Device) Open(ctx context.Context) (mgrpc.MgRPC, error) {
 		if err != nil {
 			return nil, fmt.Errorf("establishing mqtt rpc channel: %w", err)
 		}
-		return mgrpc.Serve(ctx, c), nil
+		m := mgrpc.Serve(ctx, c)
+		d.notifications.register(m)
+		return m, nil
 	}
 	if strings.HasPrefix(d.uri, "ws://") || strings.HasPrefix(d.uri, "wss://") {
-		c, err := mgrpc.New(ctx, d.uri,
+		m, err := mgrpc.New(ctx, d.uri,
 			mgrpc.UseWebSocket(),
+			mgrpc.LocalID(localID()),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("establishing rpc channel: %w", err)
 		}
-		ll.Info().Str("channel_protocol", "http").Msg("connected to device")
-		return c, nil
+		ll.Info().Str("channel_protocol", "ws").Msg("connected to device")
+		d.notifications.register(m)
+		return m, nil
 	}
-	c, err := mgrpc.New(ctx, d.uri,
+	m, err := mgrpc.New(ctx, d.uri,
 		mgrpc.UseHTTPPost(),
+		mgrpc.LocalID(localID()),
 		mgrpc.CodecOptions(
 			codec.Options{
 				HTTPOut: codec.OutboundHTTPCodecOptions{
@@ -70,8 +82,9 @@ func (d *Device) Open(ctx context.Context) (mgrpc.MgRPC, error) {
 	if err != nil {
 		return nil, fmt.Errorf("establishing rpc channel: %w", err)
 	}
+	d.notifications.register(m)
 	ll.Info().Str("channel_protocol", "http").Msg("connected to device")
-	return c, nil
+	return m, nil
 }
 
 func (d *Device) resolveSpecs(ctx context.Context) error {
@@ -135,4 +148,11 @@ func WithDeviceName(name string) DeviceOption {
 	return func(d *Device) {
 		d.Name = name
 	}
+}
+
+func localID() string {
+	l := viper.GetString("local-id")
+	l = strings.Replace(l, "${PID}", strconv.Itoa(os.Getpid()), -1)
+	l = strings.Replace(l, "${RANDOM}", strconv.Itoa(rand.Int()), -1)
+	return l
 }

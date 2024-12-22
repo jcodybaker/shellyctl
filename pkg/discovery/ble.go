@@ -112,10 +112,11 @@ func (d *Discoverer) searchBLE(ctx context.Context, stop chan struct{}) ([]*Devi
 			}
 			macStr := strings.ToUpper(scanResult.Address.String())
 			dev := &Device{
-				Name:         scanResult.LocalName(),
-				MACAddr:      macStr,
-				uri:          (&url.URL{Scheme: "ble", Host: macStr}).String(),
-				authCallback: d.authCallback,
+				Name:          scanResult.LocalName(),
+				MACAddr:       macStr,
+				uri:           (&url.URL{Scheme: "ble", Host: macStr}).String(),
+				authCallback:  d.authCallback,
+				notifications: &d.notifications,
 			}
 			ll := dev.LogCtx(ctx)
 
@@ -213,7 +214,8 @@ func (d *Discoverer) AddBLE(ctx context.Context, mac string) (*Device, error) {
 		ble: &BLEDevice{
 			options: d.options,
 		},
-		authCallback: d.authCallback,
+		authCallback:  d.authCallback,
+		notifications: &d.notifications,
 	})
 	return dev, nil
 }
@@ -351,7 +353,7 @@ func (b *BLEDevice) Call(
 		Str("subcomponent", "ble").
 		Str("method", cmd.Cmd).Logger()
 	cmd.ID = atomic.AddInt64(&bleMGRPCID, 1)
-	reqFrame := frame.NewRequestFrame("shellyctl", "", "", cmd, false)
+	reqFrame := frame.NewRequestFrame(localID(), "", "", cmd, false)
 	reqFrameBytes, err := json.Marshal(reqFrame)
 	if err != nil {
 		return nil, fmt.Errorf("encoding command: %w", err)

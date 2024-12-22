@@ -2,12 +2,28 @@ package discovery
 
 import (
 	"encoding/json"
+	"sync"
 
 	"github.com/jcodybaker/go-shelly"
 	"github.com/mongoose-os/mos/common/mgrpc"
 	"github.com/mongoose-os/mos/common/mgrpc/frame"
 	"github.com/rs/zerolog/log"
 )
+
+type notifications struct {
+	statusChan     chan StatusNotification
+	fullStatusChan chan StatusNotification
+	eventChan      chan EventNotification
+
+	lock sync.Mutex
+}
+
+func (n *notifications) register(s mgrpc.MgRPC) {
+	log.Debug().Msg("registering notification handlers")
+	s.AddHandler("NotifyStatus", n.statusNotificationHandler)
+	s.AddHandler("NotifyFullStatus", n.fullStatusNotificationHandler)
+	s.AddHandler("NotifyEvent", n.eventNotificationHandler)
+}
 
 // StatusNotification carries a status notification and metadata.
 type StatusNotification struct {
@@ -56,10 +72,10 @@ func (d *Discoverer) GetEventNotifications(buffer int) <-chan EventNotification 
 	return d.eventChan
 }
 
-func (d *Discoverer) statusNotificationHandler(mr mgrpc.MgRPC, f *frame.Frame) *frame.Frame {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	if d.statusChan == nil {
+func (n *notifications) statusNotificationHandler(mr mgrpc.MgRPC, f *frame.Frame) *frame.Frame {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+	if n.statusChan == nil {
 		return nil
 	}
 	s := &shelly.NotifyStatus{}
@@ -72,17 +88,17 @@ func (d *Discoverer) statusNotificationHandler(mr mgrpc.MgRPC, f *frame.Frame) *
 			Str("payload", string(f.Params)).
 			Msg("unmarshalling NotifyStatus frame")
 	}
-	d.statusChan <- StatusNotification{
+	n.statusChan <- StatusNotification{
 		Status: s,
 		Frame:  f,
 	}
 	return nil
 }
 
-func (d *Discoverer) fullStatusNotificationHandler(mr mgrpc.MgRPC, f *frame.Frame) *frame.Frame {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	if d.fullStatusChan == nil {
+func (n *notifications) fullStatusNotificationHandler(mr mgrpc.MgRPC, f *frame.Frame) *frame.Frame {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+	if n.fullStatusChan == nil {
 		return nil
 	}
 	s := &shelly.NotifyStatus{}
@@ -95,17 +111,17 @@ func (d *Discoverer) fullStatusNotificationHandler(mr mgrpc.MgRPC, f *frame.Fram
 			Str("payload", string(f.Params)).
 			Msg("unmarshalling NotifyFullStatus frame")
 	}
-	d.fullStatusChan <- StatusNotification{
+	n.fullStatusChan <- StatusNotification{
 		Status: s,
 		Frame:  f,
 	}
 	return nil
 }
 
-func (d *Discoverer) eventNotificationHandler(mr mgrpc.MgRPC, f *frame.Frame) *frame.Frame {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	if d.eventChan == nil {
+func (n *notifications) eventNotificationHandler(mr mgrpc.MgRPC, f *frame.Frame) *frame.Frame {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+	if n.eventChan == nil {
 		return nil
 	}
 	e := &shelly.NotifyEvent{}
@@ -118,7 +134,7 @@ func (d *Discoverer) eventNotificationHandler(mr mgrpc.MgRPC, f *frame.Frame) *f
 			Str("payload", string(f.Params)).
 			Msg("unmarshalling NotifyFullStatus frame")
 	}
-	d.eventChan <- EventNotification{
+	n.eventChan <- EventNotification{
 		Event: e,
 		Frame: f,
 	}
