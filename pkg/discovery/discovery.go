@@ -81,6 +81,7 @@ func (d *Discoverer) AddDeviceByAddress(ctx context.Context, addr string, opts .
 	}
 	switch u.Scheme {
 	case "http", "https":
+	case "ws", "wss":
 	default:
 		return nil, fmt.Errorf("unsupported URI scheme %q", u.Scheme)
 	}

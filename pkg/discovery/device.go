@@ -3,6 +3,7 @@ package discovery
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -46,6 +47,16 @@ func (d *Device) Open(ctx context.Context) (mgrpc.MgRPC, error) {
 			return nil, fmt.Errorf("establishing mqtt rpc channel: %w", err)
 		}
 		return mgrpc.Serve(ctx, c), nil
+	}
+	if strings.HasPrefix(d.uri, "ws://") || strings.HasPrefix(d.uri, "wss://") {
+		c, err := mgrpc.New(ctx, d.uri,
+			mgrpc.UseWebSocket(),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("establishing rpc channel: %w", err)
+		}
+		ll.Info().Str("channel_protocol", "http").Msg("connected to device")
+		return c, nil
 	}
 	c, err := mgrpc.New(ctx, d.uri,
 		mgrpc.UseHTTPPost(),
