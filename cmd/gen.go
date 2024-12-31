@@ -34,7 +34,6 @@ var (
 			&shelly.BTHomeDeleteDeviceRequest{},
 			&shelly.BTHomeAddSensorRequest{},
 			&shelly.BTHomeDeleteSensorRequest{},
-			&shelly.BTHomeStartDeviceDiscoveryRequest{},
 			&shelly.BTHomeGetObjectInfosRequest{},
 		},
 	}
@@ -306,51 +305,54 @@ func init() {
 	baggage := &gencobra.Baggage{
 		Output: Output,
 	}
-	if err := gencobra.ComponentsToCmd(components, baggage); err != nil {
+	cmds, err := gencobra.ComponentsToCmd(components, baggage)
+	if err != nil {
 		log.Panic().Err(err).Msg("generating menu for API commands")
 	}
 	rootCmd.AddGroup(&cobra.Group{
 		ID:    "Component RPCs",
 		Title: "Device Component RPCs:",
 	})
+
 	for _, c := range components {
 		c := c
 		rootCmd.AddCommand(c.Parent)
 		c.Parent.Run = func(cmd *cobra.Command, args []string) {
 			c.Parent.Help()
 		}
-		for _, childCmd := range c.Parent.Commands() {
-			// Hack 🙄
-			if c.Parent.Use == "shelly" && childCmd.Use == "reset-wi-fi-config" {
-				childCmd.Use = "reset-wifi-config"
-				childCmd.Aliases = append(childCmd.Aliases, "reset-wi-fi-config")
+	}
+	for _, childCmd := range cmds {
+		parent := childCmd.Parent()
+		// Hack 🙄
+		if parent.Use == "shelly" && childCmd.Use == "reset-wi-fi-config" {
+			childCmd.Use = "reset-wifi-config"
+			childCmd.Aliases = append(childCmd.Aliases, "reset-wi-fi-config")
+		}
+		childRun := childCmd.RunE
+		discoveryFlags(childCmd.Flags(), discoveryFlagsOptions{interactive: true})
+		childCmd.RunE = func(cmd *cobra.Command, args []string) error {
+			if err := rootCmd.PersistentPreRunE(cmd, args); err != nil {
+				return err
 			}
-			childRun := childCmd.RunE
-			discoveryFlags(childCmd.Flags(), discoveryFlagsOptions{interactive: true})
-			childCmd.RunE = func(cmd *cobra.Command, args []string) error {
-				if err := rootCmd.PersistentPreRunE(cmd, args); err != nil {
-					return err
-				}
-				ctx := cmd.Context()
-				l := log.Ctx(ctx)
-				dOpts, err := discoveryOptionsFromFlags(cmd.Flags())
-				if err != nil {
-					l.Fatal().Err(err).Msg("parsing flags")
-				}
+			ctx := cmd.Context()
+			l := log.Ctx(ctx)
+			dOpts, err := discoveryOptionsFromFlags(cmd.Flags())
+			if err != nil {
+				l.Fatal().Err(err).Msg("parsing flags")
+			}
 
-				baggage.Discoverer = discovery.NewDiscoverer(dOpts...)
-				if err := baggage.Discoverer.MQTTConnect(ctx); err != nil {
-					l.Fatal().Err(err).Msg("connecting to MQTT broker")
-				}
-				_, err = baggage.Discoverer.Search(ctx)
-				if err != nil {
-					l.Fatal().Err(err).Msg("searching for devices")
-				}
-				if err := discoveryAddDevices(ctx, baggage.Discoverer); err != nil {
-					l.Fatal().Err(err).Msg("adding devices")
-				}
-				return childRun(cmd, args)
+			baggage.Discoverer = discovery.NewDiscoverer(dOpts...)
+			if err := baggage.Discoverer.MQTTConnect(ctx); err != nil {
+				l.Fatal().Err(err).Msg("connecting to MQTT broker")
 			}
+			_, err = baggage.Discoverer.Search(ctx)
+			if err != nil {
+				l.Fatal().Err(err).Msg("searching for devices")
+			}
+			if err := discoveryAddDevices(ctx, baggage.Discoverer); err != nil {
+				l.Fatal().Err(err).Msg("adding devices")
+			}
+			return childRun(cmd, args)
 		}
 	}
 }

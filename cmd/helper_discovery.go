@@ -30,7 +30,6 @@ type discoveryFlagsOptions struct {
 	withTTL                    bool
 	interactive                bool
 	searchStrictTimeoutDefault bool
-	mqttTopics                 []string
 }
 
 func discoveryFlags(f *pflag.FlagSet, opts discoveryFlagsOptions) {

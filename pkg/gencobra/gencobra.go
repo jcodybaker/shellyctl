@@ -29,17 +29,19 @@ type Component struct {
 	Requests []shelly.RPCRequestBody
 }
 
-func ComponentsToCmd(components []*Component, baggage *Baggage) error {
+func ComponentsToCmd(components []*Component, baggage *Baggage) ([]*cobra.Command, error) {
+	var cmds []*cobra.Command
 	for _, c := range components {
 		for _, r := range c.Requests {
 			cmd, err := RequestToCmd(r, baggage)
 			if err != nil {
-				return err
+				return nil, err
 			}
+			cmds = append(cmds, cmd)
 			c.Parent.AddCommand(cmd)
 		}
 	}
-	return nil
+	return cmds, nil
 }
 
 func RequestToCmd(req shelly.RPCRequestBody, baggage *Baggage) (*cobra.Command, error) {
