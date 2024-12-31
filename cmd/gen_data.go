@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 
 	"github.com/jcodybaker/go-shelly"
@@ -16,25 +17,38 @@ import (
 	"github.com/spf13/viper"
 )
 
+type dataCommandOptions struct {
+	strParam  string
+	fileParam string
+	urlParam  string
+	nullParam string
+}
+
 type reqBuilder func(data *string, append bool) shelly.RPCRequestBody
 type runE func(cmd *cobra.Command, args []string) error
 
-func newDataCommand(reqBuilder reqBuilder, strParam, fileParam, nullParam string) runE {
+func newDataCommand(reqBuilder reqBuilder, opt dataCommandOptions) runE {
 	return func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
 		method := reqBuilder(nil, false).Method()
 		ll := log.Ctx(ctx).With().Str("method", method).Logger()
 
 		var b *bytes.Buffer
-		data := viper.GetString(strParam)
-		dataFile := viper.GetString(fileParam)
+		data := viper.GetString(opt.strParam)
+		dataFile := viper.GetString(opt.fileParam)
+		dataURL := viper.GetString(opt.urlParam)
 		remove := false
-		fields := fmt.Sprintf("--%s and --%s", strParam, fileParam)
-		if nullParam != "" {
-			remove = viper.GetBool(nullParam)
-			fields = fmt.Sprintf("--%s, --%s, and --%s", strParam, fileParam, nullParam)
+		fields := fmt.Sprintf("--%s, --%s and --%s", opt.strParam, opt.fileParam, opt.urlParam)
+		if opt.nullParam != "" {
+			remove = viper.GetBool(opt.nullParam)
+			fields = fmt.Sprintf("--%s, --%s, --%s, and --%s", opt.strParam, opt.fileParam, opt.urlParam, opt.nullParam)
 		}
-		if (data != "" && dataFile != "") || (data != "" && remove) || (dataFile != "" && remove) {
+		if (data != "" && dataFile != "") ||
+			(data != "" && dataURL != "") ||
+			(dataFile != "" && dataURL != "") ||
+			(data != "" && remove) ||
+			(dataFile != "" && remove) ||
+			(dataURL != "" && remove) {
 			return fmt.Errorf("%s options are mutually exclusive", fields)
 		}
 		if data == "" && dataFile == "" && !remove {
@@ -45,21 +59,35 @@ func newDataCommand(reqBuilder reqBuilder, strParam, fileParam, nullParam string
 		} else if dataFile == "-" {
 			b = &bytes.Buffer{}
 			if _, err := io.Copy(b, os.Stdin); err != nil {
-				ll.Fatal().Err(err).Msg(fmt.Sprintf("reading stdin for --%s", strParam))
+				ll.Fatal().Err(err).Msg(fmt.Sprintf("reading stdin for --%s", opt.strParam))
 			}
 		} else if dataFile != "" {
 			b = &bytes.Buffer{}
 			f, err := os.Open(dataFile)
 			if err != nil {
-				ll.Fatal().Err(err).Str(fileParam, dataFile).Msg(fmt.Sprintf("opening --%s", fileParam))
+				ll.Fatal().Err(err).Str(opt.fileParam, dataFile).Msg(fmt.Sprintf("opening --%s", opt.fileParam))
 			}
 			n, err := io.Copy(b, f)
 			if err != nil {
-				ll.Fatal().Err(err).Str(fileParam, dataFile).Msg(fmt.Sprintf("reading --%s", fileParam))
+				ll.Fatal().Err(err).Str(opt.fileParam, dataFile).Msg(fmt.Sprintf("reading --%s", opt.fileParam))
 			}
-			ll.Debug().Int64("bytes_read", n).Str(fileParam, dataFile).Msg(fmt.Sprintf("finished reading --%s", fileParam))
+			ll.Debug().Int64("bytes_read", n).Str(opt.fileParam, dataFile).Msg(fmt.Sprintf("finished reading --%s", opt.fileParam))
 			if err := f.Close(); err != nil {
-				ll.Warn().Err(err).Str(fileParam, dataFile).Msg(fmt.Sprintf("closing --%s", fileParam))
+				ll.Warn().Err(err).Str(opt.fileParam, dataFile).Msg(fmt.Sprintf("closing --%s", opt.fileParam))
+			}
+		} else if dataURL != "" {
+			b = &bytes.Buffer{}
+			r, err := http.Get(dataURL)
+			if err != nil {
+				ll.Fatal().Err(err).Str(opt.fileParam, dataFile).Msg(fmt.Sprintf("fetching --%s", opt.fileParam))
+			}
+			n, err := io.Copy(b, r.Body)
+			if err != nil {
+				ll.Fatal().Err(err).Str(opt.fileParam, dataFile).Msg(fmt.Sprintf("fetching --%s", opt.fileParam))
+			}
+			ll.Debug().Int64("bytes_read", n).Str(opt.fileParam, dataFile).Msg(fmt.Sprintf("finished reading --%s", opt.fileParam))
+			if err := r.Body.Close(); err != nil {
+				ll.Warn().Err(err).Str(opt.fileParam, dataFile).Msg(fmt.Sprintf("closing --%s", opt.fileParam))
 			}
 		}
 

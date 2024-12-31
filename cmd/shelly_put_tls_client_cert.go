@@ -20,9 +20,13 @@ func init() {
 	shellyPutTLSClientCertCmd.Flags().String(
 		"data-file", "", "path to a file containing PEM encoded certificate data.",
 	)
+	shellyPutTLSClientCertCmd.Flags().String(
+		"data-url", "", "url containing PEM encoded certificate authority data.",
+	)
 	shellyPutTLSClientCertCmd.Flags().Bool(
 		"remove-cert", false, "remove an existing certificate from the device",
 	)
+
 	shellyComponent.Parent.AddCommand(shellyPutTLSClientCertCmd)
 	discoveryFlags(shellyPutTLSClientCertCmd.Flags(), discoveryFlagsOptions{interactive: true})
 	shellyPutTLSClientCertCmd.RunE = newDataCommand(
@@ -31,5 +35,10 @@ func init() {
 				Data:   data,
 				Append: append,
 			}
-		}, "data", "data-file", "remove-cert")
+		}, dataCommandOptions{
+			strParam:  "data",
+			fileParam: "data-file",
+			urlParam:  "data-url",
+			nullParam: "remove-cert",
+		})
 }

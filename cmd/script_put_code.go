@@ -22,6 +22,9 @@ func init() {
 	scriptPutCodeCmd.Flags().String(
 		"code-file", "", "path to a file containing code.",
 	)
+	scriptPutCodeCmd.Flags().String(
+		"code-url", "", "url to a file containing code.",
+	)
 
 	scriptComponent.Parent.AddCommand(scriptPutCodeCmd)
 	discoveryFlags(scriptPutCodeCmd.Flags(), discoveryFlagsOptions{interactive: true})
@@ -35,5 +38,11 @@ func init() {
 				r.Code = *code
 			}
 			return r
-		}, "code", "code-file", "")
+		},
+		dataCommandOptions{
+			strParam:  "code",
+			fileParam: "code-file",
+			urlParam:  "code-url",
+			nullParam: "",
+		})
 }

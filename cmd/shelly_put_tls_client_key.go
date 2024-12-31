@@ -20,6 +20,9 @@ func init() {
 	shellyPutTLSClientKeyCmd.Flags().String(
 		"data-file", "", "path to a file containing PEM encoded key data.",
 	)
+	shellyPutTLSClientKeyCmd.Flags().String(
+		"data-url", "", "url containing PEM encoded certificate authority data.",
+	)
 	shellyPutTLSClientKeyCmd.Flags().Bool(
 		"remove-key", false, "remove an existing key from the device",
 	)
@@ -31,5 +34,10 @@ func init() {
 				Data:   data,
 				Append: append,
 			}
-		}, "data", "data-file", "remove-key")
+		},  dataCommandOptions{
+			strParam:  "data",
+			fileParam: "data-file",
+			urlParam:  "data-url",
+			nullParam: "remove-cert",
+		})
 }

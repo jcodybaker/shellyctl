@@ -20,6 +20,9 @@ func init() {
 	shellyPutUserCACmd.Flags().String(
 		"data-file", "", "path to a file containing PEM encoded certificate authority data.",
 	)
+	shellyPutUserCACmd.Flags().String(
+		"data-url", "", "url containing PEM encoded certificate authority data.",
+	)
 	shellyPutUserCACmd.Flags().Bool(
 		"remove-ca", false, "remove an existing CA certificate from the device",
 	)
@@ -31,5 +34,10 @@ func init() {
 				Data:   data,
 				Append: append,
 			}
-		}, "data", "data-file", "remove-ca")
+		}, dataCommandOptions{
+			strParam:  "data",
+			fileParam: "data-file",
+			urlParam:  "data-url",
+			nullParam: "remove-cert",
+		})
 }
