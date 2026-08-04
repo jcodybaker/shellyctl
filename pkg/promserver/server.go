@@ -12,6 +12,7 @@ import (
 
 	"github.com/jcodybaker/go-shelly"
 	"github.com/jcodybaker/shellyctl/pkg/discovery"
+	"github.com/mongoose-os/mos/common/mgrpc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
@@ -73,6 +74,7 @@ func NewServer(
 		scrapeDurationWaring: DefaultScrapeDurationWarning,
 		namespace:            DefaultNamespace,
 		subsystem:            DefaultSubsystem,
+		conns:                make(map[string]mgrpc.MgRPC),
 	}
 	for _, o := range opts {
 		o(s)
@@ -134,6 +136,53 @@ type Server struct {
 	knownSwitchErrors sync.Map
 	knownInputErrors  sync.Map
 	knownCoverErrors  sync.Map
+
+	// connLock guards conns.
+	connLock sync.Mutex
+	// conns caches an open RPC channel per device (keyed by MAC) so we don't open and
+	// tear down a new connection - and its background recvLoop - on every scrape. Opening
+	// a channel we immediately disconnect leaks a goroutine in mgrpc's outboundHttpCodec:
+	// its read-ahead Recv() call is always still in flight when Disconnect() runs, and the
+	// goroutine backing that call blocks on a sync.Cond that nothing ever signals again.
+	conns map[string]mgrpc.MgRPC
+}
+
+// deviceConn returns a live RPC channel for dev, reusing a cached connection when possible
+// instead of dialing a new one on every scrape. Cached connections are trusted until a
+// request against them actually fails (see dropDeviceConn) - MgRPC.IsConnected() isn't a
+// reliable liveness signal here since the HTTP-POST transport used by discovered devices
+// has no persistent socket and never reports itself connected.
+func (s *Server) deviceConn(dev *discovery.Device) (mgrpc.MgRPC, error) {
+	s.connLock.Lock()
+	if c, ok := s.conns[dev.MACAddr]; ok {
+		s.connLock.Unlock()
+		return c, nil
+	}
+	s.connLock.Unlock()
+
+	c, err := dev.Open(s.ctx)
+	if err != nil {
+		return nil, err
+	}
+	s.connLock.Lock()
+	s.conns[dev.MACAddr] = c
+	s.connLock.Unlock()
+	return c, nil
+}
+
+// dropDeviceConn discards and disconnects a cached connection, forcing the next
+// collection to reconnect. Used after a request error on the assumption the
+// connection may be broken or stale.
+func (s *Server) dropDeviceConn(dev *discovery.Device) {
+	s.connLock.Lock()
+	c, ok := s.conns[dev.MACAddr]
+	if ok {
+		delete(s.conns, dev.MACAddr)
+	}
+	s.connLock.Unlock()
+	if ok {
+		c.Disconnect(s.ctx)
+	}
 }
 
 func (s *Server) initDescs() {
@@ -332,25 +381,24 @@ func (s *Server) collectDevice(ctx context.Context, dev *discovery.Device, ch ch
 		Logger()
 	ctx = l.WithContext(ctx)
 	start := time.Now()
-	c, err := dev.Open(s.ctx)
+	c, err := s.deviceConn(dev)
 	if err != nil {
 		l.Err(err).Msg("connecting to device")
 		return
 	}
 	defer func() {
-		if err = c.Disconnect(s.ctx); err != nil {
-			l.Err(err).Msg("disconnecting from device")
-		}
 		l.Debug().Dur("duration", time.Since(start)).Msg("finished device collection")
 	}()
 	status, _, err := (&shelly.ShellyGetStatusRequest{}).Do(ctx, c, dev.AuthCallback(ctx))
 	if err != nil {
 		l.Err(err).Msg("querying device status")
+		s.dropDeviceConn(dev)
 		return
 	}
 	config, _, err := (&shelly.ShellyGetConfigRequest{}).Do(ctx, c, dev.AuthCallback(ctx))
 	if err != nil {
 		l.Err(err).Msg("querying device status")
+		s.dropDeviceConn(dev)
 		return
 	}
 
