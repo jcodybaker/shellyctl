@@ -84,6 +84,18 @@ jobs:
 
           echo IMAGE_ID=$IMAGE_ID
           echo VERSION=$VERSION
-          docker pull $IMAGE_ID:${{ github.sha }}
+
+          for i in $(seq 1 45); do
+            if docker pull $IMAGE_ID:${{ github.sha }}; then
+              break
+            fi
+            if [ "$i" -eq 45 ]; then
+              echo "Timed out waiting for main build to publish $IMAGE_ID:${{ github.sha }} - check that the 'Go' workflow succeeded on main for this commit" >&2
+              exit 1
+            fi
+            echo "Waiting for main build to publish $IMAGE_ID:${{ github.sha }} (attempt $i/45)..."
+            sleep 20
+          done
+
           docker tag $IMAGE_ID:${{ github.sha }} $IMAGE_ID:$VERSION
           docker push $IMAGE_ID:$VERSION
