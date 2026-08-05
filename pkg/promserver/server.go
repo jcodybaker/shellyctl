@@ -370,8 +370,15 @@ type deviceInfo struct {
 }
 
 func (s *Server) collectDevice(ctx context.Context, dev *discovery.Device, ch chan<- prometheus.Metric) {
+	// Default the device_name label to the MAC, not dev.BestName() - BestName() falls back to
+	// the connection URI, which is meant for user-facing auth prompts, not for a metric label
+	// (it varies with the RPC transport and would balloon label cardinality on the URI's port).
+	name := dev.Name
+	if name == "" {
+		name = dev.MACAddr
+	}
 	d := &deviceInfo{
-		name:     dev.BestName(),
+		name:     name,
 		instance: dev.Instance(),
 		mac:      dev.MACAddr,
 	}
@@ -460,8 +467,9 @@ func (s *Server) collectSwitchComponent(
 	)
 	if err != nil {
 		l.Err(err).Msg("encoding metric")
-	}
+	} else {
 	ch <- m
+	}
 
 	if sws.AEnergy != nil {
 		// total_energy_watt_hours
@@ -479,8 +487,9 @@ func (s *Server) collectSwitchComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 	if sws.RetAEnergy != nil {
 		// total_returned_energy_watt_hours
@@ -498,8 +507,9 @@ func (s *Server) collectSwitchComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 	if sws.Temperature != nil && sws.Temperature.C != nil {
 		// temperature_celsius
@@ -517,8 +527,9 @@ func (s *Server) collectSwitchComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 	if sws.Temperature != nil && sws.Temperature.F != nil {
 		// temperature_fahrenheit
@@ -536,8 +547,9 @@ func (s *Server) collectSwitchComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 	if sws.Freq != nil {
 		// network_frequency_hertz
@@ -555,8 +567,9 @@ func (s *Server) collectSwitchComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 	if sws.PF != nil {
 		// power_factor
@@ -574,8 +587,9 @@ func (s *Server) collectSwitchComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 	if sws.Voltage != nil {
 		// voltage
@@ -593,8 +607,9 @@ func (s *Server) collectSwitchComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 	if sws.Current != nil {
 		// current_amperes
@@ -612,8 +627,9 @@ func (s *Server) collectSwitchComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 	if sws.APower != nil {
 		// instantaneous_active_power_watts
@@ -631,8 +647,9 @@ func (s *Server) collectSwitchComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 
 	// component_error
@@ -673,8 +690,9 @@ func (s *Server) collectSwitchComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 		return true
 	})
 }
@@ -712,8 +730,9 @@ func (s *Server) collectCoverComponent(
 	)
 	if err != nil {
 		l.Err(err).Msg("encoding metric")
-	}
+	} else {
 	ch <- m
+	}
 
 	// cover_position_control_enabled
 	m, err = metricWithOptionalTimestamp(
@@ -729,8 +748,9 @@ func (s *Server) collectCoverComponent(
 	)
 	if err != nil {
 		l.Err(err).Msg("encoding metric")
-	}
+	} else {
 	ch <- m
+	}
 
 	// cover_state
 	for _, state := range coverStates {
@@ -752,8 +772,9 @@ func (s *Server) collectCoverComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 
 	if cs.AEnergy != nil {
@@ -772,8 +793,9 @@ func (s *Server) collectCoverComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 	if cs.Temperature != nil && cs.Temperature.C != nil {
 		// temperature_celsius
@@ -791,8 +813,9 @@ func (s *Server) collectCoverComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 	if cs.Temperature != nil && cs.Temperature.F != nil {
 		// temperature_fahrenheit
@@ -810,8 +833,9 @@ func (s *Server) collectCoverComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 	if cs.Freq != nil {
 		// network_frequency_hertz
@@ -829,8 +853,9 @@ func (s *Server) collectCoverComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 	if cs.PF != nil {
 		// power_factor
@@ -848,8 +873,9 @@ func (s *Server) collectCoverComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 	if cs.Voltage != nil {
 		// voltage
@@ -867,8 +893,9 @@ func (s *Server) collectCoverComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 	if cs.Current != nil {
 		// current_amperes
@@ -886,8 +913,9 @@ func (s *Server) collectCoverComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 	if cs.APower != nil {
 		// instantaneous_active_power_watts
@@ -905,8 +933,9 @@ func (s *Server) collectCoverComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 
 	// component_error
@@ -947,8 +976,9 @@ func (s *Server) collectCoverComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 		return true
 	})
 }
@@ -983,8 +1013,9 @@ func (s *Server) collectInputComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 
 	// input_state_on
@@ -1002,8 +1033,9 @@ func (s *Server) collectInputComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 
 	// input_percent
@@ -1021,8 +1053,9 @@ func (s *Server) collectInputComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 	// input_xpercent
 	if is.XPercent != nil {
@@ -1039,8 +1072,9 @@ func (s *Server) collectInputComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 	}
 
 	// component_error
@@ -1081,8 +1115,9 @@ func (s *Server) collectInputComponent(
 		)
 		if err != nil {
 			l.Err(err).Msg("encoding metric")
+		} else {
+			ch <- m
 		}
-		ch <- m
 		return true
 	})
 }
@@ -1138,15 +1173,19 @@ func ptrBoolToFloat64(b *bool) float64 {
 var reMACFromName = regexp.MustCompile(`^shelly.+-([A-Za-z0-9]{12})$`)
 
 func macFromName(name string) string {
-	m := reMACFromName.FindStringSubmatch("shellyplugus-d4d4da092eb4")
+	m := reMACFromName.FindStringSubmatch(name)
 	if len(m) == 2 {
 		return m[1]
 	}
 	return ""
 }
 
+// metricWithOptionalTimestamp builds a metric, attaching ct as a created-timestamp when
+// possible. Created timestamps are only a valid concept for counters - NewConstMetricWithCreatedTimestamp
+// returns an error for any other value type - so non-counters always fall back to a plain
+// NewConstMetric and ct is ignored for them.
 func metricWithOptionalTimestamp(desc *prometheus.Desc, valueType prometheus.ValueType, value float64, ct time.Time, labelValues ...string) (prometheus.Metric, error) {
-	if ct.IsZero() {
+	if ct.IsZero() || valueType != prometheus.CounterValue {
 		return prometheus.NewConstMetric(desc, valueType, value, labelValues...)
 	}
 	return prometheus.NewConstMetricWithCreatedTimestamp(desc, valueType, value, ct, labelValues...)
