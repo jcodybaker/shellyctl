@@ -53,22 +53,37 @@ jobs:
           shellyctl_windows_arm64
 
     - name: Build image
+      if: github.ref == 'refs/heads/main'
       run: docker build . --file ./ci/Dockerfile --tag $IMAGE_NAME --label "runnumber=${GITHUB_RUN_ID}"
+
     - name: Log in to registry
+      if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
       run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $ --password-stdin
 
     - name: Push image
+      if: github.ref == 'refs/heads/main'
       run: |
           IMAGE_ID=ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME
 
           IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
 
-          VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
+          echo IMAGE_ID=$IMAGE_ID
+          docker tag $IMAGE_NAME $IMAGE_ID:latest
+          docker tag $IMAGE_NAME $IMAGE_ID:${{ github.sha }}
+          docker push $IMAGE_ID:latest
+          docker push $IMAGE_ID:${{ github.sha }}
 
-          [[ "${{ github.ref }}" == "refs/tags/"* ]] && VERSION=$(echo $VERSION | sed -e 's/^v//')
+    - name: Tag release image
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+          IMAGE_ID=ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME
 
-          [ "$VERSION" == "main" ] && VERSION=latest
+          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+
+          VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,' -e 's/^v//')
+
           echo IMAGE_ID=$IMAGE_ID
           echo VERSION=$VERSION
-          docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
+          docker pull $IMAGE_ID:${{ github.sha }}
+          docker tag $IMAGE_ID:${{ github.sha }} $IMAGE_ID:$VERSION
           docker push $IMAGE_ID:$VERSION
