@@ -14,6 +14,7 @@ import (
 	"github.com/jcodybaker/shellyctl/pkg/discovery"
 	"github.com/mongoose-os/mos/common/mgrpc"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
 )
@@ -85,6 +86,13 @@ func NewServer(
 	s.Handler = promhttp.HandlerFor(s.promReg, promhttp.HandlerOpts{})
 	s.initDescs()
 	s.promReg.MustRegister(s)
+	if !s.disableRuntimeMetrics {
+		// Go/process runtime metrics (goroutine count, heap size, RSS, etc.) - without these
+		// there's no visibility from Prometheus into a leak like the one that caused past
+		// OOMKills.
+		s.promReg.MustRegister(collectors.NewGoCollector())
+		s.promReg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	}
 	for _, e := range baseKnownSwitchErrors {
 		s.knownSwitchErrors.Store(e, struct{}{})
 	}
@@ -129,6 +137,14 @@ type Server struct {
 	currentAmperesDesc                *prometheus.Desc
 	instantaneousActivePowerWattsDesc *prometheus.Desc
 	componentErrorDesc                *prometheus.Desc
+
+	// cachedConnectionsDesc and knownDevicesDesc are internal health metrics that let us watch
+	// for connection/device-cache growth (the symptom of the mgrpc connection-churn leak) from
+	// Prometheus instead of only noticing it via an eventual OOMKill.
+	cachedConnectionsDesc *prometheus.Desc
+	knownDevicesDesc      *prometheus.Desc
+
+	disableRuntimeMetrics bool
 
 	allDescs []*prometheus.Desc
 	// knownSwitchErrors tracks all known switch error states, both those documented and any unexpected
@@ -294,7 +310,21 @@ func (s *Server) initDescs() {
 		[]string{"instance", "mac", "device_name", "component_name", "component", "id", "error"},
 		nil,
 	)
+	s.cachedConnectionsDesc = prometheus.NewDesc(
+		prometheus.BuildFQName(s.namespace, s.subsystem, "cached_device_connections"),
+		`Number of open RPC connections cached by the collector.`,
+		nil,
+		nil,
+	)
+	s.knownDevicesDesc = prometheus.NewDesc(
+		prometheus.BuildFQName(s.namespace, s.subsystem, "known_devices"),
+		`Number of devices known to the discoverer.`,
+		nil,
+		nil,
+	)
 	s.allDescs = append(s.allDescs,
+		s.cachedConnectionsDesc,
+		s.knownDevicesDesc,
 		s.switchOutputOnDesc,
 		s.inputStateOnDesc,
 		s.inputPercentDesc,
@@ -334,6 +364,11 @@ func (s *Server) Collect(ch chan<- prometheus.Metric) {
 		l.Err(err).Msg("finding new devices")
 	}
 	l.Debug().Dur("duration", time.Since(start)).Msg("finished discovery")
+	s.connLock.Lock()
+	cachedConns := len(s.conns)
+	s.connLock.Unlock()
+	ch <- prometheus.MustNewConstMetric(s.cachedConnectionsDesc, prometheus.GaugeValue, float64(cachedConns))
+	ch <- prometheus.MustNewConstMetric(s.knownDevicesDesc, prometheus.GaugeValue, float64(len(s.discoverer.AllDevices())))
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	concurrencyLimit := make(chan struct{}, s.concurrency)

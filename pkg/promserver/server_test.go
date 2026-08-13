@@ -199,6 +199,9 @@ func TestCollect(t *testing.T) {
 				}
 			  `,
 			expect: `
+# HELP shelly_status_cached_device_connections Number of open RPC connections cached by the collector.
+# TYPE shelly_status_cached_device_connections gauge
+shelly_status_cached_device_connections 1
 # HELP shelly_status_component_error 1 if the error condition ("error" label) is active; 0 or omitted if the error has cleared.
 # TYPE shelly_status_component_error gauge
 shelly_status_component_error{component="switch",component_name="switch:0",device_name="000000000001",error="overpower",id="0",instance="$INSTANCE_DEVICE_1",mac="000000000001"} 0
@@ -211,6 +214,9 @@ shelly_status_current_amperes{component="switch",component_name="switch:0",devic
 # HELP shelly_status_instantaneous_active_power_watts Last measured instantaneous active power (in Watts) delivered to the attached load (shown if applicable)
 # TYPE shelly_status_instantaneous_active_power_watts gauge
 shelly_status_instantaneous_active_power_watts{component="switch",component_name="switch:0",device_name="000000000001",id="0",instance="$INSTANCE_DEVICE_1",mac="000000000001"} 0
+# HELP shelly_status_known_devices Number of devices known to the discoverer.
+# TYPE shelly_status_known_devices gauge
+shelly_status_known_devices 1
 # HELP shelly_status_switch_output_on 1 if the switch output is on; 0 if it is off.
 # TYPE shelly_status_switch_output_on gauge
 shelly_status_switch_output_on{component_name="switch:0",device_name="000000000001",id="0",instance="$INSTANCE_DEVICE_1",mac="000000000001"} 0
@@ -626,7 +632,10 @@ shelly_status_voltage{component="switch",component_name="switch:0",device_name="
 				}
 			}
 			`,
-			expect: `# HELP shelly_status_component_error 1 if the error condition ("error" label) is active; 0 or omitted if the error has cleared.
+			expect: `# HELP shelly_status_cached_device_connections Number of open RPC connections cached by the collector.
+# TYPE shelly_status_cached_device_connections gauge
+shelly_status_cached_device_connections 1
+# HELP shelly_status_component_error 1 if the error condition ("error" label) is active; 0 or omitted if the error has cleared.
 # TYPE shelly_status_component_error gauge
 shelly_status_component_error{component="input",component_name="input:0",device_name="$MAC_DEVICE_1",error="out_of_range",id="0",instance="$INSTANCE_DEVICE_1",mac="$MAC_DEVICE_1"} 0
 shelly_status_component_error{component="input",component_name="input:0",device_name="$MAC_DEVICE_1",error="read",id="0",instance="$INSTANCE_DEVICE_1",mac="$MAC_DEVICE_1"} 0
@@ -676,6 +685,9 @@ shelly_status_instantaneous_active_power_watts{component="switch",component_name
 shelly_status_instantaneous_active_power_watts{component="switch",component_name="Change Pump",device_name="$MAC_DEVICE_1",id="0",instance="$INSTANCE_DEVICE_1",mac="$MAC_DEVICE_1"} 0
 shelly_status_instantaneous_active_power_watts{component="switch",component_name="Heater",device_name="$MAC_DEVICE_1",id="2",instance="$INSTANCE_DEVICE_1",mac="$MAC_DEVICE_1"} 206.9
 shelly_status_instantaneous_active_power_watts{component="switch",component_name="Lift Pump",device_name="$MAC_DEVICE_1",id="1",instance="$INSTANCE_DEVICE_1",mac="$MAC_DEVICE_1"} 84.4
+# HELP shelly_status_known_devices Number of devices known to the discoverer.
+# TYPE shelly_status_known_devices gauge
+shelly_status_known_devices 1
 # HELP shelly_status_network_frequency_hertz Last measured network frequency in Hz.
 # TYPE shelly_status_network_frequency_hertz gauge
 shelly_status_network_frequency_hertz{component="switch",component_name="Bubbles Evac",device_name="$MAC_DEVICE_1",id="3",instance="$INSTANCE_DEVICE_1",mac="$MAC_DEVICE_1"} 60
@@ -735,7 +747,7 @@ shelly_status_voltage{component="switch",component_name="Lift Pump",device_name=
 			d1.AddMockResponse("Shelly.GetStatus", nil, json.RawMessage(tc.d1Status))
 			d1.AddMockResponse("Shelly.GetConfig", nil, json.RawMessage(tc.d1Config))
 
-			_, ps := NewServer(ctx, td.Discoverer)
+			_, ps := NewServer(ctx, td.Discoverer, WithoutRuntimeMetrics())
 			metricserver := httptest.NewServer(ps)
 			t.Cleanup(metricserver.Close)
 

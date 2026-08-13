@@ -59,3 +59,12 @@ func WithNotificationCacheCacheTTL(ttl time.Duration) Option {
 		s.notificationCacheTTL = ttl
 	}
 }
+
+// WithoutRuntimeMetrics disables the Go runtime and process metrics (goroutine count, heap
+// size, RSS, etc.) that are otherwise exposed alongside device metrics. Mainly useful in tests
+// which assert on the exact set of exposed metrics.
+func WithoutRuntimeMetrics() Option {
+	return func(s *Server) {
+		s.disableRuntimeMetrics = true
+	}
+}
