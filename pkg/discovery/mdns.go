@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +16,10 @@ import (
 const (
 	mdnsSearchBuffer = 50
 )
+
+// reMDNSNameMAC extracts the MAC address Shelly gen2/gen3 devices embed in their mDNS
+// hostname, e.g. "ShellyPlus2PM-C4D8D54FFD44".
+var reMDNSNameMAC = regexp.MustCompile(`-([A-Fa-f0-9]{12})$`)
 
 // searchMDNS finds new devices via mDNS.
 func (d *Discoverer) searchMDNS(ctx context.Context, stop chan struct{}) ([]*Device, error) {
@@ -164,6 +169,15 @@ func (d *Discoverer) processMDNSServiceEntry(ctx context.Context, se *mdns.Servi
 		Scheme: "http",
 		Path:   "/rpc",
 		Host:   net.JoinHostPort(addr.String(), strconv.Itoa(se.Port)),
+	}
+	// Shelly gen2/gen3 mDNS hostnames embed the device MAC. If we already know this device,
+	// just refresh lastSeen/uri instead of opening a connection to re-resolve specs we already
+	// have - every mDNS advertisement from an already-known device would otherwise churn a new
+	// mgrpc connection on every discovery cycle.
+	if m := reMDNSNameMAC.FindStringSubmatch(d.mdnsSEName(se)); m != nil {
+		if dev := d.touchKnownDevice(m[1], u.String()); dev != nil {
+			return dev
+		}
 	}
 	dev, err := d.AddDeviceByAddress(ctx, u.String(), sourceIsMDNS, WithDeviceName(d.mdnsSEName(se)))
 	if err != nil {

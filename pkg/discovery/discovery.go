@@ -177,6 +177,25 @@ func (d *Discoverer) isKnownDevice(mac string) bool {
 	return ok
 }
 
+// touchKnownDevice refreshes lastSeen (and uri, if provided) for an already-known device
+// identified by mac, without opening a connection to it. It returns nil if mac isn't known.
+func (d *Discoverer) touchKnownDevice(mac string, uri string) *Device {
+	if mac == "" {
+		return nil
+	}
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	dev, ok := d.knownDevices[strings.ToUpper(mac)]
+	if !ok {
+		return nil
+	}
+	dev.lastSeen = d.now()
+	if uri != "" {
+		dev.uri = uri
+	}
+	return dev
+}
+
 // AllDevices returns all known devices.
 func (d *Discoverer) AllDevices() []*Device {
 	var out []*Device

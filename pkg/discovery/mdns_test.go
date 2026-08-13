@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync/atomic"
 	"testing"
 
 	"github.com/hashicorp/mdns"
@@ -73,4 +74,81 @@ func TestDiscovererMDNSSearch(t *testing.T) {
 	devs, err := d.searchMDNS(ctx, stop)
 	require.NoError(t, err)
 	assert.Len(t, devs, 1)
+}
+
+// TestDiscovererMDNSSearch_SkipsKnownDevice guards against a regression of the resolveSpecs
+// connection-churn leak (root-caused via 15.5h-to-OOM production runs): every mDNS
+// advertisement - not just ones from newly-seen devices - used to open a fresh mgrpc
+// connection to re-resolve specs, even for devices already in knownDevices. Since gen2/gen3
+// mDNS hostnames embed the device MAC, a rediscovery of an already-known device shouldn't
+// need to open a connection at all.
+func TestDiscovererMDNSSearch_SkipsKnownDevice(t *testing.T) {
+	ctx := context.Background()
+	var requests atomic.Int32
+	fakeDevServer := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requests.Add(1)
+			reqBody, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			reqFrame := &frame.Frame{}
+			require.NoError(t, json.Unmarshal(reqBody, &reqFrame))
+			resp := frame.NewResponseFromFrame(reqFrame)
+			resp.Response = json.RawMessage(`{
+				"name": null,
+				"id": "shellypro3-aabbccddeeff",
+				"mac": "AABBCCDDEEFF",
+				"slot": 0,
+				"model": "SPSW-003XE16EU",
+				"gen": 2,
+				"fw_id": "20231219-133956/1.1.0-g34b5d4f",
+				"ver": "1.1.0",
+				"app": "Pro3",
+				"auth_en": false,
+				"auth_domain": null
+			}`)
+			respFrame := frame.NewResponseFrame(reqFrame.Dst, reqFrame.Src, reqFrame.Key, resp)
+			w.Header().Add("content-type", "application/json")
+			require.NoError(t, json.NewEncoder(w).Encode(respFrame))
+		}))
+	t.Cleanup(func() { fakeDevServer.Close() })
+	serviceEntryTemplate := mdns.ServiceEntry{
+		InfoFields: []string{"gen=2"},
+		Host:       "ShellyPro3-AABBCCDDEEFF.local.",
+	}
+	host, port, err := net.SplitHostPort(fakeDevServer.Listener.Addr().String())
+	require.NoError(t, err)
+	devIP := net.ParseIP(host)
+	if devIP4 := devIP.To4(); devIP4 != nil {
+		serviceEntryTemplate.AddrV4 = devIP4
+	} else if devIP6 := devIP.To16(); devIP6 != nil {
+		serviceEntryTemplate.AddrV6 = devIP6
+	} else {
+		t.Fatalf("unknown ip format: %v", devIP)
+	}
+	serviceEntryTemplate.Port, err = strconv.Atoi(port)
+	require.NoError(t, err)
+
+	queryFunc := func(ctx context.Context, params *mdns.QueryParam) error {
+		se := serviceEntryTemplate
+		params.Entries <- &se
+		return nil
+	}
+	d := NewDiscoverer(
+		func(d *Discoverer) { d.mdnsQueryFunc = queryFunc },
+		WithMDNSSearchEnabled(true),
+	)
+	stop := make(chan struct{})
+	devs, err := d.searchMDNS(ctx, stop)
+	require.NoError(t, err)
+	require.Len(t, devs, 1)
+	assert.EqualValues(t, 1, requests.Load(), "first search for a new device should resolve specs")
+
+	// Rediscover the same device via mDNS. Since it's already known, this should not open a
+	// connection - the mgrpc connection churn is exactly what caused the production OOM leak.
+	for i := 0; i < 5; i++ {
+		devs, err = d.searchMDNS(ctx, stop)
+		require.NoError(t, err)
+		require.Len(t, devs, 1)
+	}
+	assert.EqualValues(t, 1, requests.Load(), "rediscovering a known device should not reopen a connection")
 }
